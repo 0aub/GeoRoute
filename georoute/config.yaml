@@ -1,0 +1,121 @@
+# GeoRoute Centralized Configuration
+# All settings are managed from this single file
+
+# SAM (Segment Anything Model) Configuration
+sam:
+  # Model type: vit_h (best quality, 8GB+ VRAM), vit_l (balanced), vit_b (fastest, 4GB VRAM)
+  model_type: "vit_h"
+
+  # Device: cuda (GPU) or cpu
+  device: "cuda"
+
+  # Text prompt for building detection
+  text_prompt: "building"
+
+  # Minimum area (in pixels) for detected segments to be considered buildings
+  min_area: 100
+
+  # Whether to use automatic mask generation (vs text-prompted)
+  automatic: true
+
+# Obstacle Detection Method
+obstacle_detection:
+  # Method: "sam" (GPU-accelerated) or "gemini" (API-based fallback)
+  method: "sam"
+
+# Gemini AI Models
+gemini:
+  # Model for complex tasks (vision, terrain analysis, risk assessment)
+  complex_model: "gemini-2.5-flash"
+  # Model for simple tasks (scoring, classification)
+  simple_model: "gemini-2.0-flash-lite"
+  # Model for terrain routing (Gemini fallback when real terrain data unavailable)
+  terrain_model: "gemini-2.5-flash"
+
+# Terrain Data Sources (ESA WorldCover, Copernicus DEM)
+terrain:
+  # Copernicus DEM - 10m resolution elevation data
+  copernicus_dem_base: "https://copernicus-dem-30m.s3.amazonaws.com"
+  copernicus_tile_format: "COG_10"  # COG_10 = 10m resolution tiles
+
+  # ESA WorldCover - 10m land cover classification
+  esa_worldcover_base: "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map"
+
+  # Cell size in meters (matches COG_10 resolution)
+  cell_size_meters: 10.0
+
+  # Cache directory (inside Docker container)
+  cache_dir: "/app/terrain_cache"
+
+# Land Cover Classification (ESA WorldCover classes)
+landcover:
+  classes:
+    10: "tree_cover"
+    20: "shrubland"
+    30: "grassland"
+    40: "cropland"
+    50: "built_up"      # IMPASSABLE - buildings, roads, urban
+    60: "bare_sparse"   # Desert, sand, rock - PASSABLE
+    70: "snow_ice"
+    80: "water"         # IMPASSABLE
+    90: "wetland"
+    95: "mangrove"      # IMPASSABLE
+    100: "moss_lichen"
+
+  # Movement cost multipliers (lower = easier, inf = impassable)
+  costs:
+    10: 2.5      # Tree cover - difficult
+    20: 1.5      # Shrubland - moderate
+    30: 1.0      # Grassland - easy
+    40: 1.2      # Cropland - moderate
+    50: "inf"    # Built-up - IMPASSABLE
+    60: 1.0      # Bare/sparse - desert baseline (easy)
+    70: 3.0      # Snow/ice - difficult
+    80: "inf"    # Water - IMPASSABLE
+    90: 2.0      # Wetland - difficult
+    95: "inf"    # Mangrove - IMPASSABLE
+    100: 1.5     # Moss/lichen - moderate
+
+# Pathfinding Settings
+pathfinding:
+  # MCP_Geometric algorithm settings
+  allow_diagonal: true
+
+  # Slope threshold (slopes > 100% grade / 45 degrees = impassable)
+  max_slope_gradient: 1.0
+
+  # Walking speed for travel time calculation
+  base_walking_speed_kmh: 4.0
+  off_road_factor: 0.6  # 60% of road speed when off-road
+
+  # Route generation settings
+  route_configs:
+    - name: "Direct Terrain Route"
+      description: "Shortest path avoiding obstacles (uses real satellite terrain data)"
+      waypoint_interval: 30.0
+      simplify_tolerance: 5.0
+    - name: "Safe Terrain Route"
+      description: "Wider margins around obstacles (uses real satellite terrain data)"
+      waypoint_interval: 40.0
+      simplify_tolerance: 10.0
+    - name: "Tactical Route"
+      description: "Balanced path for military movement (uses real satellite terrain data)"
+      waypoint_interval: 50.0
+      simplify_tolerance: 8.0
+
+# API Settings
+api:
+  # Default timeout for external API calls (milliseconds)
+  timeout_ms: 30000
+
+  # CORS settings
+  cors_allow_origins: ["*"]
+
+# Geographic Restrictions
+geo:
+  # Gulf Cooperation Council countries bounding box
+  gcc_bounds:
+    north: 32.0
+    south: 12.0
+    east: 60.0
+    west: 34.0

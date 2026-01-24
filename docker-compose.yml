@@ -1,0 +1,81 @@
+services:
+  georoute-backend:
+    build:
+      context: ./georoute
+      dockerfile: Dockerfile
+    container_name: georoute-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT}:${BACKEND_PORT}"
+    environment:
+      - BACKEND_PORT=${BACKEND_PORT}
+      - BACKEND_HOST=${BACKEND_HOST}
+      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - ORS_API_KEY=${ORS_API_KEY}
+      - OPENTOPOGRAPHY_API_KEY=${OPENTOPOGRAPHY_API_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - RELOAD=true
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      # Mount source code for hot-reload (no rebuild needed)
+      - ./georoute:/app/georoute:ro
+      # Cache for terrain data (ESA WorldCover, Copernicus DEM)
+      - terrain-cache:/app/terrain_cache
+      # Cache for SAM model checkpoints
+      - sam-cache:/root/.cache/torch
+    # GPU support for SAM inference
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${BACKEND_PORT}/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - georoute-network
+
+  georoute-ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: georoute-ui
+    restart: unless-stopped
+    ports:
+      - "${UI_PORT}:8080"
+    environment:
+      - VITE_API_URL=${VITE_API_URL}
+    volumes:
+      # Mount source code for hot-reload (no rebuild needed)
+      - ./ui/src:/app/src
+      - ./ui/public:/app/public
+      - ./ui/index.html:/app/index.html
+      - ./ui/vite.config.ts:/app/vite.config.ts
+      - ./ui/tailwind.config.ts:/app/tailwind.config.ts
+      - ./ui/postcss.config.js:/app/postcss.config.js
+      - ./ui/tsconfig.json:/app/tsconfig.json
+      - ./ui/tsconfig.app.json:/app/tsconfig.app.json
+      - ./ui/tsconfig.node.json:/app/tsconfig.node.json
+      - ./ui/components.json:/app/components.json
+    depends_on:
+      georoute-backend:
+        condition: service_healthy
+    networks:
+      - georoute-network
+
+networks:
+  georoute-network:
+    driver: bridge
+
+volumes:
+  terrain-cache:
+    driver: local
+  sam-cache:
+    driver: local
