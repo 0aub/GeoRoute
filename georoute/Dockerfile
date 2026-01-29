@@ -1,43 +1,26 @@
-# Use PyTorch official image with CUDA 12.1 support
-# This includes Python 3.10, PyTorch 2.1, and CUDA pre-installed (~4GB image)
-FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+# Use lightweight Python image
+FROM python:3.11-slim
 
 WORKDIR /app
 
 # Set timezone non-interactively (Gulf region = Asia/Dubai)
-ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=Asia/Dubai
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Asia/Dubai \
+    DEBCONF_NONINTERACTIVE_SEEN=true
 
-# Install system dependencies for geospatial libraries
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    g++ \
+# Install minimal system dependencies
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    tzdata \
     curl \
-    libgdal-dev \
-    gdal-bin \
-    libgeos-dev \
-    libproj-dev \
-    libgl1 \
-    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
-
-# Set GDAL environment variables for rasterio
-ENV GDAL_CONFIG=/usr/bin/gdal-config
-ENV CPLUS_INCLUDE_PATH=/usr/include/gdal
-ENV C_INCLUDE_PATH=/usr/include/gdal
 
 # Copy requirements first for better caching
 COPY requirements.txt .
 
 # Install Python dependencies
-# PyTorch and torchvision are already installed in base image, so skip them
-RUN pip install --no-cache-dir \
-    segment-geospatial>=0.11.0 \
-    opencv-python-headless>=4.8.0 \
-    Pillow>=10.0.0 \
-    scipy>=1.11.0 \
-    && pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code into georoute subdirectory
 COPY . ./georoute/

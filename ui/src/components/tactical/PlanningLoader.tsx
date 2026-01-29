@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { MapPin, Satellite, Route, Shield, Target, CheckCircle2, Crosshair, AlertCircle } from 'lucide-react';
+import { MapPin, Satellite, Route, Shield, Target, CheckCircle2, Crosshair, AlertCircle, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ProgressUpdate } from '@/hooks/useApi';
 
@@ -9,32 +9,35 @@ interface LoadingStage {
   icon: React.ElementType;
 }
 
+// 3 main stages visible during the process
 const STAGES: LoadingStage[] = [
-  { id: 'terrain', label: 'Analyzing Terrain', icon: MapPin },
-  { id: 'imagery', label: 'Processing Satellite Data', icon: Satellite },
-  { id: 'routes', label: 'Generating Off-Road Routes', icon: Route },
-  { id: 'risk', label: 'Tactical Risk Assessment', icon: Shield },
-  { id: 'scoring', label: 'Calculating Scores', icon: Target },
-  { id: 'classification', label: 'Final Classification', icon: CheckCircle2 },
+  { id: 'imagery', label: 'Acquiring Imagery', icon: Satellite },
+  { id: 'routes', label: 'Planning Routes', icon: Route },
+  { id: 'report', label: 'Generating Report', icon: FileText },
 ];
 
-// Map backend stage names to stage index
+// Map backend stage names to stage index (consolidated)
 const STAGE_MAP: Record<string, number> = {
-  terrain: 0,
-  imagery: 1,
-  routes: 2,
-  risk: 3,
-  scoring: 4,
-  classification: 5,
-  complete: 6,
+  terrain: 0,      // Show as "Acquiring Imagery"
+  imagery: 0,      // Show as "Acquiring Imagery"
+  routes: 1,       // Show as "Planning Routes"
+  classification: 1,  // Show as "Planning Routes"
+  analysis: 1,     // Show as "Planning Routes"
+  report: 2,       // Show as "Generating Report"
+  complete: 2,     // Stay on last stage until done
   error: -1,
 };
 
 interface PlanningLoaderProps {
   progress: ProgressUpdate | null;
+  advancedAnalytics?: boolean;
 }
 
-export const PlanningLoader = ({ progress }: PlanningLoaderProps) => {
+export const PlanningLoader = ({ progress, advancedAnalytics = false }: PlanningLoaderProps) => {
+  // Determine which stages to show based on advanced analytics
+  const visibleStages = advancedAnalytics
+    ? STAGES
+    : STAGES.filter(s => s.id !== 'report');
   const [pulseRing, setPulseRing] = useState(0);
 
   // Pulsing ring animation
@@ -46,14 +49,17 @@ export const PlanningLoader = ({ progress }: PlanningLoaderProps) => {
   }, []);
 
   // Derive stage and progress from backend data
-  const currentStageIndex = progress ? (STAGE_MAP[progress.stage] ?? 0) : 0;
+  const rawStageIndex = progress ? (STAGE_MAP[progress.stage] ?? 0) : 0;
+  // Clamp stage index to visible stages (report stage may not be visible)
+  const maxStageIndex = visibleStages.length - 1;
+  const currentStageIndex = Math.min(rawStageIndex, maxStageIndex);
   const backendProgress = progress?.progress ?? 0;
   const message = progress?.message ?? 'Initializing...';
 
   // Use backend progress directly (0-100)
   const totalProgress = Math.min(backendProgress, 100);
 
-  const currentStage = STAGES[Math.min(Math.max(currentStageIndex, 0), STAGES.length - 1)];
+  const currentStage = visibleStages[Math.min(Math.max(currentStageIndex, 0), maxStageIndex)];
   const Icon = currentStage?.icon ?? MapPin;
   const isError = progress?.stage === 'error';
 
@@ -222,7 +228,7 @@ export const PlanningLoader = ({ progress }: PlanningLoaderProps) => {
 
         {/* Stage indicators */}
         <div className="flex items-center gap-2 max-w-lg w-full justify-between">
-          {STAGES.map((stage, index) => {
+          {visibleStages.map((stage, index) => {
             const StageIcon = stage.icon;
             const isComplete = index < currentStageIndex;
             const isCurrent = index === currentStageIndex;
@@ -254,25 +260,17 @@ export const PlanningLoader = ({ progress }: PlanningLoaderProps) => {
           })}
         </div>
 
-        {/* Tactical tip at bottom */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 max-w-md">
-          <div className={cn(
-            "backdrop-blur-sm rounded-lg p-4 border",
-            isError
-              ? "bg-red-900/30 border-red-500/30"
-              : "bg-[#1a3a35]/80 border-[#00A05A]/30"
-          )}>
-            <p className="text-sm text-gray-300 text-center">
-              <span className={cn(
-                "font-semibold",
-                isError ? "text-red-500" : "text-[#00A05A]"
-              )}>
-                {isError ? 'ERROR: ' : 'INTEL: '}
-              </span>
-              {isError ? message : getTacticalTip(currentStageIndex)}
-            </p>
+        {/* Error message only - no INTEL tips */}
+        {isError && (
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 max-w-md">
+            <div className="backdrop-blur-sm rounded-lg p-4 border bg-red-900/30 border-red-500/30">
+              <p className="text-sm text-gray-300 text-center">
+                <span className="font-semibold text-red-500">ERROR: </span>
+                {message}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* CSS Animations */}
@@ -302,14 +300,3 @@ export const PlanningLoader = ({ progress }: PlanningLoaderProps) => {
   );
 };
 
-function getTacticalTip(stageIndex: number): string {
-  const tips = [
-    'Analyzing terrain elevation and obstacles for optimal pathfinding.',
-    'AI processing satellite imagery to identify passable terrain types.',
-    'Generating multiple routes through sand, grass, and open terrain.',
-    'Calculating enemy line of sight and detection probabilities.',
-    'Evaluating speed, stealth, and survival metrics for each route.',
-    'Determining final mission success probability and recommendations.',
-  ];
-  return tips[stageIndex] || tips[0];
-}

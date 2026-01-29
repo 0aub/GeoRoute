@@ -1,12 +1,10 @@
-import { Wifi, WifiOff, Database } from 'lucide-react';
-import { NoGoZones } from './NoGoZones';
+import { Wifi, WifiOff } from 'lucide-react';
 import { ActionButtons } from './ActionButtons';
 import { UnitPlacement } from './UnitPlacement';
 import { TacticalRouteResults } from './TacticalRouteResults';
 import { AdvancedSettings } from './AdvancedSettings';
+import { TacticalReportModal } from '@/components/tactical/TacticalReportModal';
 import { Separator } from '@/components/ui/separator';
-import { Button } from '@/components/ui/button';
-import { useNavigate } from 'react-router-dom';
 
 interface SidebarProps {
   onPlanTacticalAttack: () => void;
@@ -19,51 +17,35 @@ export const Sidebar = ({
   isLoading,
   isConnected = true,
 }: SidebarProps) => {
-  const navigate = useNavigate();
-
   return (
-    <aside className="w-80 h-full bg-background-panel border-r border-border flex flex-col shrink-0">
-      {/* Logo Header - Large and Centered */}
-      <div className="p-6 border-b border-border flex flex-col items-center">
+    <aside className="w-52 h-full bg-background-panel border-r border-border flex flex-col shrink-0">
+      {/* Logo Header - Compact */}
+      <div className="p-2 border-b border-border flex flex-col items-center">
         <img
           src="/logo.svg"
           alt="GeoRoute"
-          className="w-full max-w-[260px] h-auto mb-4"
-          style={{ minHeight: '100px' }}
+          className="w-full max-w-[140px] h-auto mb-1"
+          style={{ minHeight: '40px' }}
         />
         {/* Status Bar */}
-        <div className="flex items-center justify-between w-full mt-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => navigate('/backlog')}
-            className="gap-1 text-foreground-muted hover:text-foreground"
-          >
-            <Database className="w-4 h-4" />
-            Backlog
-          </Button>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-foreground-muted">
-              {isConnected ? 'Connected' : 'Offline'}
+        <div className="flex items-center justify-end w-full">
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] text-foreground-muted">
+              {isConnected ? 'Connected' : 'Disconnected'}
             </span>
             {isConnected ? (
-              <Wifi className="w-4 h-4 text-success" />
+              <Wifi className="w-2.5 h-2.5 text-success" />
             ) : (
-              <WifiOff className="w-4 h-4 text-danger" />
+              <WifiOff className="w-2.5 h-2.5 text-danger" />
             )}
           </div>
         </div>
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto tactical-scroll p-4 space-y-6">
+      <div className="flex-1 overflow-y-auto tactical-scroll p-2 space-y-2">
         {/* Unit Placement for Tactical Planning */}
         <UnitPlacement />
-
-        <Separator className="bg-border" />
-
-        {/* No-Go Zones */}
-        <NoGoZones />
 
         <Separator className="bg-border" />
 
@@ -78,8 +60,11 @@ export const Sidebar = ({
         />
 
         {/* Tactical Route Results */}
-        <TacticalRouteResults />
+        <TacticalRouteResults onRegenerate={onPlanTacticalAttack} />
       </div>
+
+      {/* Tactical Report Modal */}
+      <TacticalReportModal />
     </aside>
   );
 };

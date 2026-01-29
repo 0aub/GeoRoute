@@ -1,15 +1,9 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { getApiUrl } from '@/config/env';
 import type {
-  PlanRouteRequest,
-  QuickAssessRequest,
-  RouteResult,
-  VehicleProfile,
   HealthStatus,
   TacticalPlanRequest,
   TacticalPlanResponse,
-  BacklogEntry,
-  BacklogListResponse,
 } from '@/types';
 
 const apiUrl = getApiUrl();
@@ -24,8 +18,6 @@ const fetchWithError = async <T>(url: string, options?: RequestInit): Promise<T>
     headers: {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0',
       ...options?.headers,
     },
   });
@@ -38,15 +30,6 @@ const fetchWithError = async <T>(url: string, options?: RequestInit): Promise<T>
   return response.json();
 };
 
-export const useVehicles = () => {
-  return useQuery<VehicleProfile[]>({
-    queryKey: ['vehicles'],
-    queryFn: () => fetchWithError('/api/vehicles'),
-    enabled: !!apiUrl,
-    staleTime: Infinity,
-  });
-};
-
 export const useHealth = () => {
   return useQuery<HealthStatus>({
     queryKey: ['health'],
@@ -56,28 +39,8 @@ export const useHealth = () => {
   });
 };
 
-export const usePlanRoute = () => {
-  return useMutation<RouteResult, Error, PlanRouteRequest>({
-    mutationFn: (request) =>
-      fetchWithError('/api/plan-route', {
-        method: 'POST',
-        body: JSON.stringify(request),
-      }),
-  });
-};
-
-export const useQuickAssess = () => {
-  return useMutation<any, Error, QuickAssessRequest>({
-    mutationFn: (request) =>
-      fetchWithError('/api/quick-assess', {
-        method: 'POST',
-        body: JSON.stringify(request),
-      }),
-  });
-};
-
 // ============================================================================
-// Tactical Planning API Hooks
+// Tactical Planning API
 // ============================================================================
 
 export interface ProgressUpdate {
@@ -117,7 +80,6 @@ export const subscribeToProgress = (
       const data = JSON.parse(event.data) as ProgressUpdate;
       onProgress(data);
 
-      // Close connection when complete or error
       if (data.stage === 'complete' || data.stage === 'error') {
         eventSource.close();
       }
@@ -131,41 +93,7 @@ export const subscribeToProgress = (
     onError?.(new Error('Progress stream disconnected'));
   };
 
-  // Return cleanup function
   return () => {
     eventSource.close();
   };
-};
-
-export const useBacklogList = (limit = 50, offset = 0, since?: string) => {
-  const params = new URLSearchParams({
-    limit: limit.toString(),
-    offset: offset.toString(),
-  });
-
-  if (since) {
-    params.append('since', since);
-  }
-
-  return useQuery<BacklogListResponse>({
-    queryKey: ['backlog', limit, offset, since],
-    queryFn: () => fetchWithError(`/api/backlog?${params.toString()}`),
-    enabled: !!apiUrl,
-  });
-};
-
-export const useBacklogEntry = (requestId: string | null) => {
-  return useQuery<BacklogEntry>({
-    queryKey: ['backlog', requestId],
-    queryFn: () => fetchWithError(`/api/backlog/${requestId}`),
-    enabled: !!apiUrl && !!requestId,
-  });
-};
-
-export const useBacklogImages = (requestId: string | null) => {
-  return useQuery<{ satellite_image?: string; terrain_image?: string }>({
-    queryKey: ['backlog', requestId, 'images'],
-    queryFn: () => fetchWithError(`/api/backlog/${requestId}/images`),
-    enabled: !!apiUrl && !!requestId,
-  });
 };

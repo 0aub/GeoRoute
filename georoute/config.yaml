@@ -1,113 +1,78 @@
 # GeoRoute Centralized Configuration
 # All settings are managed from this single file
 
-# SAM (Segment Anything Model) Configuration
-sam:
-  # Model type: vit_h (best quality, 8GB+ VRAM), vit_l (balanced), vit_b (fastest, 4GB VRAM)
-  model_type: "vit_h"
-
-  # Device: cuda (GPU) or cpu
-  device: "cuda"
-
-  # Text prompt for building detection
-  text_prompt: "building"
-
-  # Minimum area (in pixels) for detected segments to be considered buildings
-  min_area: 100
-
-  # Whether to use automatic mask generation (vs text-prompted)
-  automatic: true
-
-# Obstacle Detection Method
-obstacle_detection:
-  # Method: "sam" (GPU-accelerated) or "gemini" (API-based fallback)
-  method: "sam"
+# Route Generation Method
+route_generation:
+  # Method: "gemini_image" - Gemini 3 Pro Image draws routes directly on satellite imagery
+  method: "gemini_image"
+  # Number of routes to generate (2 = better quality, 3 = more options)
+  num_routes: 2
 
 # Gemini AI Models
 gemini:
-  # Model for complex tasks (vision, terrain analysis, risk assessment)
-  complex_model: "gemini-2.5-flash"
-  # Model for simple tasks (scoring, classification)
-  simple_model: "gemini-2.0-flash-lite"
-  # Model for terrain routing (Gemini fallback when real terrain data unavailable)
-  terrain_model: "gemini-2.5-flash"
+  image_model: "gemini-3-pro-image-preview"  # For drawing routes on satellite images
+  text_model: "gemini-2.5-flash"             # For analysis and reports
 
-# Terrain Data Sources (ESA WorldCover, Copernicus DEM)
-terrain:
-  # Copernicus DEM - 10m resolution elevation data
-  copernicus_dem_base: "https://copernicus-dem-30m.s3.amazonaws.com"
-  copernicus_tile_format: "COG_10"  # COG_10 = 10m resolution tiles
+# Route Generation Prompt
+route_prompt: |
+  Edit this satellite image. Draw exactly 2 route lines from BLUE dot to RED dot.
 
-  # ESA WorldCover - 10m land cover classification
-  esa_worldcover_base: "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map"
+  ORANGE LINE (Route A):
+  - Take the main road, most direct path
+  - Single line, no branches
 
-  # Cell size in meters (matches COG_10 resolution)
-  cell_size_meters: 10.0
+  GREEN LINE (Route B):
+  - Take a different, longer path
+  - Go around the other side of buildings
+  - Single line, no branches
 
-  # Cache directory (inside Docker container)
-  cache_dir: "/app/terrain_cache"
+  CRITICAL: Each route is ONE line only. Like tracing with your finger from blue to red.
+  Do not draw loops, branches, or multiple paths for either color.
+  
+    
+# Tactical Analysis Prompt (for advanced analytics)
+analysis_prompt: |
+  Analyze this tactical situation satellite image showing infantry approach routes.
 
-# Land Cover Classification (ESA WorldCover classes)
-landcover:
-  classes:
-    10: "tree_cover"
-    20: "shrubland"
-    30: "grassland"
-    40: "cropland"
-    50: "built_up"      # IMPASSABLE - buildings, roads, urban
-    60: "bare_sparse"   # Desert, sand, rock - PASSABLE
-    70: "snow_ice"
-    80: "water"         # IMPASSABLE
-    90: "wetland"
-    95: "mangrove"      # IMPASSABLE
-    100: "moss_lichen"
+  Context:
+  - Friendly forces: {num_soldiers} units (at blue marker)
+  - Enemy position: {num_enemies} units (at red marker)
+  - Two routes shown: ORANGE (balanced), GREEN (stealth/safest)
 
-  # Movement cost multipliers (lower = easier, inf = impassable)
-  costs:
-    10: 2.5      # Tree cover - difficult
-    20: 1.5      # Shrubland - moderate
-    30: 1.0      # Grassland - easy
-    40: 1.2      # Cropland - moderate
-    50: "inf"    # Built-up - IMPASSABLE
-    60: 1.0      # Bare/sparse - desert baseline (easy)
-    70: 3.0      # Snow/ice - difficult
-    80: "inf"    # Water - IMPASSABLE
-    90: 2.0      # Wetland - difficult
-    95: "inf"    # Mangrove - IMPASSABLE
-    100: 1.5     # Moss/lichen - moderate
+  Provide tactical analysis in JSON format:
+  {{
+    "recommended_approach": {{
+      "route": "green or orange",
+      "reasoning": "Why this route is recommended"
+    }},
+    "timing_suggestions": {{
+      "optimal_time": "dawn/dusk/night/day",
+      "reasoning": "Why this timing"
+    }},
+    "equipment_recommendations": [
+      {{"item": "Equipment", "reason": "Why needed"}}
+    ],
+    "risk_zones": [
+      {{"location": "Description", "mitigation": "How to reduce risk"}}
+    ],
+    "enemy_analysis": {{
+      "weakness": "Tactical weakness to exploit"
+    }},
+    "mission_summary": "2-3 sentence tactical summary"
+  }}
 
-# Pathfinding Settings
-pathfinding:
-  # MCP_Geometric algorithm settings
-  allow_diagonal: true
-
-  # Slope threshold (slopes > 100% grade / 45 degrees = impassable)
-  max_slope_gradient: 1.0
-
-  # Walking speed for travel time calculation
-  base_walking_speed_kmh: 4.0
-  off_road_factor: 0.6  # 60% of road speed when off-road
-
-  # Route generation settings
-  route_configs:
-    - name: "Direct Terrain Route"
-      description: "Shortest path avoiding obstacles (uses real satellite terrain data)"
-      waypoint_interval: 30.0
-      simplify_tolerance: 5.0
-    - name: "Safe Terrain Route"
-      description: "Wider margins around obstacles (uses real satellite terrain data)"
-      waypoint_interval: 40.0
-      simplify_tolerance: 10.0
-    - name: "Tactical Route"
-      description: "Balanced path for military movement (uses real satellite terrain data)"
-      waypoint_interval: 50.0
-      simplify_tolerance: 8.0
+# Marker Settings
+markers:
+  size: 6  # Smaller markers for cleaner route visualization
+  start_color: [0, 100, 255]  # Blue
+  end_color: [255, 50, 50]    # Red
+  outline_color: [255, 255, 255]
+  outline_width: 2
 
 # API Settings
 api:
   # Default timeout for external API calls (milliseconds)
   timeout_ms: 30000
-
   # CORS settings
   cors_allow_origins: ["*"]
 

@@ -14,6 +14,15 @@ class TacticalUnit(BaseModel):
     unit_id: Optional[str] = Field(default=None, description="Unique identifier")
 
 
+class GeminiRequest(BaseModel):
+    """Record of a Gemini API request for debugging."""
+    timestamp: datetime
+    stage: str = Field(description="Pipeline stage name")
+    prompt: str = Field(description="Prompt sent to Gemini")
+    response: str = Field(description="Response from Gemini")
+    image_included: bool = Field(default=False, description="Whether image was included")
+
+
 class RiskLevel(str, Enum):
     """Risk level for route segments."""
     SAFE = "safe"
@@ -125,6 +134,10 @@ class TacticalPlanRequest(BaseModel):
         default="full",
         description="full = all classification layers, quick = Gemini only"
     )
+    advanced_analytics: bool = Field(
+        default=False,
+        description="Enable detailed tactical analysis report"
+    )
 
 
 class TacticalPlanResponse(BaseModel):
@@ -148,58 +161,14 @@ class TacticalPlanResponse(BaseModel):
     key_risks: list[str]
     recommendations: list[str]
 
+    # Advanced tactical analysis report (when advanced_analytics enabled)
+    tactical_analysis_report: Optional[dict] = Field(
+        default=None,
+        description="Detailed tactical analysis including recommendations, timing, equipment, flanking opportunities"
+    )
+
     # Debug: Detection visualization data for UI
     detection_debug: Optional[dict] = Field(
         default=None,
         description="Grid detection debug info - building_cells, traversable_cells, grid_cells for visualization"
     )
-
-
-# Backlog models
-
-class APICall(BaseModel):
-    """Record of an API call made during planning."""
-    api_name: str = Field(description="Google Maps, OSRM, etc.")
-    endpoint: str
-    method: str = Field(default="GET")
-    request_params: dict = Field(default_factory=dict)
-    response_status: int
-    response_data: Optional[dict] = None
-    duration_seconds: float
-    timestamp: datetime
-
-
-class GeminiRequest(BaseModel):
-    """Record of a Gemini API request."""
-    stage: str = Field(description="Stage identifier (stage1_initial_routes, etc.)")
-    prompt: str
-    response: str = Field(description="JSON string response from Gemini")
-    image_included: bool = Field(default=False, description="Whether images were sent")
-    timestamp: datetime
-
-
-class BacklogEntry(BaseModel):
-    """Complete audit trail of a tactical planning request."""
-    request_id: str
-    timestamp: datetime
-
-    # User input
-    user_input: TacticalPlanRequest
-
-    # API calls made (in order)
-    api_calls: list[APICall] = Field(default_factory=list)
-
-    # Gemini pipeline (sequential requests)
-    gemini_pipeline: list[GeminiRequest] = Field(default_factory=list)
-
-    # Images stored
-    satellite_image: Optional[str] = Field(default=None, description="Base64 encoded")
-    terrain_image: Optional[str] = Field(default=None, description="Base64 encoded")
-
-    # Final result
-    result: TacticalPlanResponse
-
-    # Totals
-    total_duration_seconds: float
-    total_api_calls: int
-    total_gemini_requests: int

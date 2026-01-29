@@ -44,25 +44,22 @@ class TacticalGeminiClient:
     def __init__(self, api_key: str, project_id: str):
         genai.configure(api_key=api_key)
 
-        # Load model names from centralized config.yaml
-        complex_model_name = get_yaml_setting("gemini", "complex_model")
-        simple_model_name = get_yaml_setting("gemini", "simple_model")
+        # Load text model from centralized config.yaml
+        text_model_name = get_yaml_setting("gemini", "text_model")
+        if not text_model_name:
+            raise ValueError("Missing gemini.text_model in config.yaml")
 
-        # STRICT: Initialize complex model - no fallbacks
+        # Initialize the text model
         try:
-            self.complex_model = genai.GenerativeModel(complex_model_name)
-            print(f"[GeminiTactical] Complex model: {complex_model_name}")
+            self.text_model = genai.GenerativeModel(text_model_name)
+            print(f"[GeminiTactical] Text model: {text_model_name}")
         except Exception as e:
-            raise ValueError(f"Failed to initialize {complex_model_name}: {e}")
+            raise ValueError(f"Failed to initialize {text_model_name}: {e}")
 
-        # STRICT: Initialize simple model - no fallbacks
-        try:
-            self.simple_model = genai.GenerativeModel(simple_model_name)
-            print(f"[GeminiTactical] Simple model: {simple_model_name}")
-        except Exception as e:
-            raise ValueError(f"Failed to initialize {simple_model_name}: {e}")
-
-        self.model = self.complex_model
+        # All stages use the same model now
+        self.model = self.text_model
+        self.complex_model = self.text_model  # Alias for compatibility
+        self.simple_model = self.text_model   # Alias for compatibility
         self.project_id = project_id
         self.gemini_requests: list[GeminiRequest] = []
 

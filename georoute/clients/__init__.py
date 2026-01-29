@@ -1,15 +1,11 @@
 """API clients for external services."""
 
 from .google_maps import GoogleMapsClient
-from .gemini import GeminiRoutePlanner
 from .gemini_tactical import TacticalGeminiClient
-from .osrm import OSRMValidator
-from .openrouteservice import OpenRouteServiceValidator
+from .esri_imagery import ESRIImageryClient
 
 __all__ = [
     "GoogleMapsClient",
-    "GeminiRoutePlanner",
     "TacticalGeminiClient",
-    "OSRMValidator",
-    "OpenRouteServiceValidator",
+    "ESRIImageryClient",
 ]

@@ -1,140 +1,134 @@
 import { create } from 'zustand';
 import type {
   Coordinate,
-  Waypoint,
-  NoGoZone,
-  VehicleProfile,
-  RouteResult,
   MapMode,
   TacticalUnit,
   TacticalRoute,
+  Bounds,
 } from '@/types';
 
+// Helper function to get display name for a unit
+export const getUnitDisplayName = (unit: TacticalUnit): string => {
+  const type = unit.is_friendly ? 'Friendly' : 'Enemy';
+  if (unit.plan_id !== undefined && unit.plan_unit_number !== undefined) {
+    return `Plan ${unit.plan_id} ${type} #${unit.plan_unit_number}`;
+  }
+  return `${type} Unit`;
+};
+
+// Tactical report entry for history
+export interface TacticalReportEntry {
+  id: string;
+  timestamp: Date;
+  centerCoords: { lat: number; lon: number };
+  report: {
+    mission_summary?: string;
+    recommended_approach?: { route?: string; reasoning?: string };
+    timing_suggestions?: { optimal_time?: string; reasoning?: string };
+    equipment_recommendations?: Array<{ item?: string; reason?: string }>;
+    enemy_analysis?: { weakness?: string };
+    risk_zones?: Array<{ location?: string; mitigation?: string }>;
+  };
+}
+
 interface MissionState {
-  // Points (Legacy - for backward compatibility)
-  startPoint: Coordinate | null;
-  endPoint: Coordinate | null;
-  waypoints: Waypoint[];
-  noGoZones: NoGoZone[];
-
-  // Selection (Legacy)
-  selectedVehicle: VehicleProfile | null;
-
-  // Route result (Legacy)
-  routeResult: RouteResult | null;
-
-  // Tactical Units (NEW)
+  // Tactical Units
   soldiers: TacticalUnit[];
   enemies: TacticalUnit[];
+
+  // Plan management - track which plan ID to assign next
+  nextPlanId: number;
 
   // Tactical Routes (NEW)
   tacticalRoutes: TacticalRoute[];
   routeVisibility: Record<number, boolean>;
   selectedRouteId: number | null;
 
+  // Obstacle/Route Visualization
+  samVisualization: string | null;
+  samVisualizationBounds: Bounds | null;
+  // Multiple plan images - keyed by plan_id
+  planImages: Record<number, { image: string; bounds: Bounds }>;
+  // Legacy single image (for backward compatibility during transition)
+  geminiRouteImage: string | null;
+  geminiRouteImageBounds: Bounds | null;
+
+  // Advanced Tactical Analysis Report
+  tacticalAnalysisReport: Record<string, unknown> | null;
+  tacticalReportHistory: TacticalReportEntry[];
+  selectedReportId: string | null;
+  reportModalOpen: boolean;
+
   // Map mode
   mapMode: MapMode;
 
   // UI state
   isPlanning: boolean;
-  bottomPanelOpen: boolean;
-  hoveredDistance: number | null;
   advancedAnalytics: boolean;
   currentZoom: number;
 
-  // Actions (Legacy)
-  setStartPoint: (point: Coordinate | null) => void;
-  setEndPoint: (point: Coordinate | null) => void;
-  addWaypoint: (point: Coordinate) => void;
-  removeWaypoint: (id: string) => void;
-  reorderWaypoints: (waypoints: Waypoint[]) => void;
-  addNoGoZone: (zone: NoGoZone) => void;
-  removeNoGoZone: (id: string) => void;
-  setSelectedVehicle: (vehicle: VehicleProfile | null) => void;
-  setRouteResult: (result: RouteResult | null) => void;
+  // Map & UI Actions
   setMapMode: (mode: MapMode) => void;
   setIsPlanning: (planning: boolean) => void;
-  setBottomPanelOpen: (open: boolean) => void;
-  setHoveredDistance: (distance: number | null) => void;
   setAdvancedAnalytics: (enabled: boolean) => void;
   setCurrentZoom: (zoom: number) => void;
   clearAll: () => void;
 
-  // Tactical Actions (NEW)
+  // Tactical Actions
   addSoldier: (unit: Omit<TacticalUnit, 'unit_id'>) => void;
   removeSoldier: (unitId: string) => void;
   updateSoldierPosition: (unitId: string, coord: Coordinate) => void;
   addEnemy: (unit: Omit<TacticalUnit, 'unit_id'>) => void;
   removeEnemy: (unitId: string) => void;
   updateEnemyPosition: (unitId: string, coord: Coordinate) => void;
-  setTacticalRoutes: (routes: TacticalRoute[]) => void;
+  setTacticalRoutes: (routes: TacticalRoute[], detectionDebug?: {
+    sam_visualization?: string;
+    sam_visualization_bounds?: Bounds;
+    gemini_route_image?: string;
+    gemini_route_bounds?: Bounds;
+  }, tacticalAnalysisReport?: Record<string, unknown> | null) => void;
   toggleRouteVisibility: (routeId: number) => void;
   setSelectedRoute: (routeId: number | null) => void;
+  clearRoutes: () => void;  // Clear routes only, keep units
+  resetForRegeneration: () => void;  // Reset units to regenerate routes
+
+  // Report history actions
+  addReportToHistory: (report: TacticalReportEntry) => void;
+  removeReportFromHistory: (id: string) => void;
+  selectReport: (id: string | null) => void;
+  setReportModalOpen: (open: boolean) => void;
 }
 
 export const useMission = create<MissionState>((set, get) => ({
-  // Legacy state
-  startPoint: null,
-  endPoint: null,
-  waypoints: [],
-  noGoZones: [],
-  selectedVehicle: null,
-  routeResult: null,
-
   // Tactical state
   soldiers: [],
   enemies: [],
+  nextPlanId: 1,
   tacticalRoutes: [],
   routeVisibility: {},
   selectedRouteId: null,
 
+  // Route/Obstacle Visualization
+  samVisualization: null,
+  samVisualizationBounds: null,
+  planImages: {},  // Multiple plan images keyed by plan_id
+  geminiRouteImage: null,
+  geminiRouteImageBounds: null,
+
+  // Advanced Tactical Analysis Report
+  tacticalAnalysisReport: null,
+  tacticalReportHistory: [],
+  selectedReportId: null,
+  reportModalOpen: false,
+
   // UI state
   mapMode: 'idle',
   isPlanning: false,
-  bottomPanelOpen: true,
-  hoveredDistance: null,
   advancedAnalytics: false,
   currentZoom: 14,
 
-  setStartPoint: (point) => set({ startPoint: point, mapMode: 'idle' }),
-  setEndPoint: (point) => set({ endPoint: point, mapMode: 'idle' }),
-  
-  addWaypoint: (point) => {
-    const { waypoints } = get();
-    const newWaypoint: Waypoint = {
-      ...point,
-      id: crypto.randomUUID(),
-      order: waypoints.length,
-    };
-    set({ waypoints: [...waypoints, newWaypoint], mapMode: 'idle' });
-  },
-  
-  removeWaypoint: (id) => {
-    const { waypoints } = get();
-    const filtered = waypoints
-      .filter((w) => w.id !== id)
-      .map((w, i) => ({ ...w, order: i }));
-    set({ waypoints: filtered });
-  },
-  
-  reorderWaypoints: (waypoints) => set({ waypoints }),
-  
-  addNoGoZone: (zone) => {
-    const { noGoZones } = get();
-    set({ noGoZones: [...noGoZones, zone], mapMode: 'idle' });
-  },
-  
-  removeNoGoZone: (id) => {
-    const { noGoZones } = get();
-    set({ noGoZones: noGoZones.filter((z) => z.id !== id) });
-  },
-  
-  setSelectedVehicle: (vehicle) => set({ selectedVehicle: vehicle }),
-  setRouteResult: (result) => set({ routeResult: result }),
   setMapMode: (mode) => set({ mapMode: mode }),
   setIsPlanning: (planning) => set({ isPlanning: planning }),
-  setBottomPanelOpen: (open) => set({ bottomPanelOpen: open }),
-  setHoveredDistance: (distance) => set({ hoveredDistance: distance }),
   setAdvancedAnalytics: (enabled) => set({ advancedAnalytics: enabled }),
   setCurrentZoom: (zoom) => set({ currentZoom: zoom }),
 
@@ -188,16 +182,80 @@ export const useMission = create<MissionState>((set, get) => ({
   },
 
   // Tactical route actions
-  setTacticalRoutes: (routes) => {
+  setTacticalRoutes: (routes, detectionDebug?: {
+    sam_visualization?: string;
+    sam_visualization_bounds?: Bounds;
+    gemini_route_image?: string;
+    gemini_route_bounds?: Bounds;
+  }, tacticalAnalysisReport?: Record<string, unknown> | null) => {
+    const { soldiers, enemies, tacticalReportHistory, nextPlanId, planImages } = get();
+
     // Initialize route visibility to all true
     const visibility = routes.reduce(
       (acc, route) => ({ ...acc, [route.route_id]: true }),
       {} as Record<number, boolean>
     );
+
+    // Assign unassigned units to the current plan
+    let soldierCounter = 1;
+    let enemyCounter = 1;
+    const updatedSoldiers = soldiers.map((s) => {
+      if (s.plan_id === undefined) {
+        return { ...s, plan_id: nextPlanId, plan_unit_number: soldierCounter++ };
+      }
+      return s;
+    });
+    const updatedEnemies = enemies.map((e) => {
+      if (e.plan_id === undefined) {
+        return { ...e, plan_id: nextPlanId, plan_unit_number: enemyCounter++ };
+      }
+      return e;
+    });
+
+    // Calculate center coordinates from soldiers and enemies
+    const allUnits = [...soldiers, ...enemies];
+    const centerCoords = allUnits.length > 0
+      ? {
+          lat: allUnits.reduce((sum, u) => sum + u.lat, 0) / allUnits.length,
+          lon: allUnits.reduce((sum, u) => sum + u.lon, 0) / allUnits.length,
+        }
+      : { lat: 0, lon: 0 };
+
+    // Auto-save report to history if provided
+    let updatedHistory = tacticalReportHistory;
+    if (tacticalAnalysisReport) {
+      const newEntry: TacticalReportEntry = {
+        id: crypto.randomUUID(),
+        timestamp: new Date(),
+        centerCoords,
+        report: tacticalAnalysisReport as TacticalReportEntry['report'],
+      };
+      updatedHistory = [newEntry, ...tacticalReportHistory];
+    }
+
+    // Store new plan image WITHOUT removing previous ones
+    const updatedPlanImages = { ...planImages };
+    if (detectionDebug?.gemini_route_image && detectionDebug?.gemini_route_bounds) {
+      updatedPlanImages[nextPlanId] = {
+        image: detectionDebug.gemini_route_image,
+        bounds: detectionDebug.gemini_route_bounds,
+      };
+    }
+
     set({
+      soldiers: updatedSoldiers,
+      enemies: updatedEnemies,
+      nextPlanId: nextPlanId + 1,
       tacticalRoutes: routes,
       routeVisibility: visibility,
       selectedRouteId: routes.length > 0 ? routes[0].route_id : null,
+      samVisualization: detectionDebug?.sam_visualization || null,
+      samVisualizationBounds: detectionDebug?.sam_visualization_bounds || null,
+      planImages: updatedPlanImages,  // Store all plan images
+      geminiRouteImage: detectionDebug?.gemini_route_image || null,
+      geminiRouteImageBounds: detectionDebug?.gemini_route_bounds || null,
+      tacticalAnalysisReport: tacticalAnalysisReport || null,
+      tacticalReportHistory: updatedHistory,
     });
   },
 
@@ -213,21 +271,73 @@ export const useMission = create<MissionState>((set, get) => ({
 
   setSelectedRoute: (routeId) => set({ selectedRouteId: routeId }),
 
-  clearAll: () =>
+  // Clear routes only (keep units and plan images for history)
+  clearRoutes: () =>
     set({
-      // Legacy state
-      startPoint: null,
-      endPoint: null,
-      waypoints: [],
-      noGoZones: [],
-      routeResult: null,
-      // Tactical state
-      soldiers: [],
-      enemies: [],
       tacticalRoutes: [],
       routeVisibility: {},
       selectedRouteId: null,
-      // UI state
+      samVisualization: null,
+      samVisualizationBounds: null,
+      // Keep planImages - they persist across route regenerations
+      geminiRouteImage: null,
+      geminiRouteImageBounds: null,
+      tacticalAnalysisReport: null,
+    }),
+
+  // Reset units for regeneration - clears plan_id so units can be reused
+  resetForRegeneration: () => {
+    const { soldiers, enemies } = get();
+    // Reset plan_id on all units so they're treated as new
+    const resetSoldiers = soldiers.map((s) => ({ ...s, plan_id: undefined, plan_unit_number: undefined }));
+    const resetEnemies = enemies.map((e) => ({ ...e, plan_id: undefined, plan_unit_number: undefined }));
+    set({
+      soldiers: resetSoldiers,
+      enemies: resetEnemies,
+      tacticalRoutes: [],
+      routeVisibility: {},
+      selectedRouteId: null,
+      samVisualization: null,
+      samVisualizationBounds: null,
+      geminiRouteImage: null,
+      geminiRouteImageBounds: null,
+      tacticalAnalysisReport: null,
+    });
+  },
+
+  // Report history actions
+  addReportToHistory: (report) => {
+    const { tacticalReportHistory } = get();
+    set({ tacticalReportHistory: [report, ...tacticalReportHistory] });
+  },
+
+  removeReportFromHistory: (id) => {
+    const { tacticalReportHistory, selectedReportId } = get();
+    const filtered = tacticalReportHistory.filter((r) => r.id !== id);
+    set({
+      tacticalReportHistory: filtered,
+      selectedReportId: selectedReportId === id ? null : selectedReportId,
+    });
+  },
+
+  selectReport: (id) => set({ selectedReportId: id }),
+
+  setReportModalOpen: (open) => set({ reportModalOpen: open }),
+
+  clearAll: () =>
+    set({
+      soldiers: [],
+      enemies: [],
+      nextPlanId: 1,
+      tacticalRoutes: [],
+      routeVisibility: {},
+      selectedRouteId: null,
+      samVisualization: null,
+      samVisualizationBounds: null,
+      planImages: {},
+      geminiRouteImage: null,
+      geminiRouteImageBounds: null,
+      tacticalAnalysisReport: null,
       mapMode: 'idle',
       isPlanning: false,
     }),

@@ -4,20 +4,16 @@ Tactical planning API endpoints.
 
 import asyncio
 import json
-from typing import Annotated, Optional
+from typing import Annotated
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from ..models.tactical import (
     TacticalPlanRequest,
     TacticalPlanResponse,
-    BacklogEntry,
 )
 from ..processing.balanced_tactical_pipeline import BalancedTacticalPipeline
-from ..clients.google_maps import GoogleMapsClient
-from ..clients.gemini_tactical import TacticalGeminiClient
-from ..storage.backlog import get_backlog_store
 from ..config import load_config
 
 
@@ -31,17 +27,7 @@ _progress_state: dict[str, dict] = {}
 def get_tactical_pipeline() -> BalancedTacticalPipeline:
     """Create balanced tactical pipeline - building avoidance with good speed."""
     config = load_config()
-
-    gmaps = GoogleMapsClient(api_key=config.google_maps_api_key)
-    gemini = TacticalGeminiClient(
-        api_key=config.gemini_api_key,
-        project_id=config.google_cloud_project,
-    )
-
-    return BalancedTacticalPipeline(
-        gmaps_client=gmaps,
-        gemini_client=gemini,
-    )
+    return BalancedTacticalPipeline(config)
 
 
 def update_progress(request_id: str, stage: str, progress: int, message: str):
@@ -66,6 +52,9 @@ async def get_progress_stream(request_id: str):
         timeout_counter = 0
         max_timeout = 300  # 5 minutes max
 
+        # Send immediate "connecting" state so UI doesn't show 0% for long
+        yield f"data: {json.dumps({'stage': 'imagery', 'progress': 5, 'message': 'Connecting...'})}\n\n"
+
         while timeout_counter < max_timeout:
             current_state = _progress_state.get(request_id)
 
@@ -77,8 +66,8 @@ async def get_progress_stream(request_id: str):
                 if current_state.get("stage") in ["complete", "error"]:
                     break
 
-            await asyncio.sleep(0.5)
-            timeout_counter += 0.5
+            await asyncio.sleep(0.1)  # Faster polling for smoother progress
+            timeout_counter += 0.1
 
         # Cleanup
         if request_id in _progress_state:
@@ -130,102 +119,3 @@ async def plan_tactical_attack(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Tactical planning failed: {str(e)}")
-
-
-@router.get("/backlog", response_model=dict)
-async def list_backlog(
-    limit: int = Query(default=50, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
-    since: Optional[datetime] = Query(default=None),
-) -> dict:
-    """
-    List tactical planning requests from backlog.
-
-    Args:
-        limit: Maximum number of entries (1-100)
-        offset: Number of entries to skip
-        since: Only return entries after this timestamp
-
-    Returns:
-        List of backlog entries with pagination info
-    """
-    backlog = get_backlog_store()
-
-    entries = backlog.list_entries(limit=limit, offset=offset, since=since)
-    total = backlog.count(since=since)
-
-    # Convert to dict for JSON serialization
-    entries_dict = [entry.model_dump() for entry in entries]
-
-    return {
-        "entries": entries_dict,
-        "pagination": {
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-            "has_more": offset + len(entries) < total,
-        },
-    }
-
-
-@router.get("/backlog/{request_id}", response_model=BacklogEntry)
-async def get_backlog_entry(request_id: str) -> BacklogEntry:
-    """
-    Get detailed backlog entry by ID.
-
-    Includes complete audit trail:
-    - User input
-    - All API calls (Google Maps, etc.)
-    - All 4 Gemini requests/responses
-    - Satellite and terrain images (base64)
-    - Generated routes with classifications
-    - Total duration
-
-    Args:
-        request_id: UUID of the request
-
-    Returns:
-        Complete backlog entry
-    """
-    backlog = get_backlog_store()
-    entry = backlog.get_entry(request_id)
-
-    if not entry:
-        raise HTTPException(status_code=404, detail=f"Backlog entry not found: {request_id}")
-
-    return entry
-
-
-@router.get("/backlog/{request_id}/images", response_model=dict)
-async def get_backlog_images(request_id: str) -> dict:
-    """
-    Get satellite and terrain images for a specific request.
-
-    Args:
-        request_id: UUID of the request
-
-    Returns:
-        Dict with satellite_image and terrain_image (base64 encoded)
-    """
-    backlog = get_backlog_store()
-    images = backlog.get_images(request_id)
-
-    if not images["satellite_image"] and not images["terrain_image"]:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No images found for request: {request_id}",
-        )
-
-    return images
-
-
-@router.delete("/backlog", status_code=204)
-async def clear_backlog():
-    """
-    Clear all backlog entries (for testing/debugging).
-
-    WARNING: This permanently deletes all audit trail data.
-    """
-    backlog = get_backlog_store()
-    backlog.clear()
-    return None

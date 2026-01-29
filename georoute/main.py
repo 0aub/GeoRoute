@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import load_config, ConfigurationError
-from .processing.pipeline import MilitaryRoutePipeline
+from .processing.balanced_tactical_pipeline import BalancedTacticalPipeline
 from .api.routes import router, set_pipeline
 from .api.tactical import router as tactical_router
 
@@ -45,8 +45,8 @@ async def lifespan(app: FastAPI):
             status = "CONFIGURED" if available else "NOT CONFIGURED"
             logger.info(f"  {api}: {status}")
 
-        # Initialize pipeline
-        pipeline = MilitaryRoutePipeline(config)
+        # Initialize pipeline with SAM support
+        pipeline = BalancedTacticalPipeline(config)
         set_pipeline(pipeline)
         logger.info("Pipeline initialized")
 

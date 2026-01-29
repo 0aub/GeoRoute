@@ -1,7 +1,15 @@
-import { useMission } from '@/hooks/useMission';
+import { useMission, getUnitDisplayName } from '@/hooks/useMission';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Trash2, Users, Crosshair } from 'lucide-react';
+
+// Helper to get short display name for sidebar
+const getShortName = (unit: { plan_id?: number; plan_unit_number?: number; is_friendly: boolean }, index: number): string => {
+  if (unit.plan_id !== undefined && unit.plan_unit_number !== undefined) {
+    return `P${unit.plan_id} #${unit.plan_unit_number}`;
+  }
+  return `New #${index + 1}`;
+};
 
 export const UnitPlacement = () => {
   const {
@@ -13,117 +21,88 @@ export const UnitPlacement = () => {
     removeEnemy,
   } = useMission();
 
-  const handlePlaceSoldier = () => {
-    setMapMode('place-soldier');
-  };
-
-  const handlePlaceEnemy = () => {
-    setMapMode('place-enemy');
-  };
+  // Group units by plan
+  const assignedSoldiers = soldiers.filter(s => s.plan_id !== undefined);
+  const unassignedSoldiers = soldiers.filter(s => s.plan_id === undefined);
+  const assignedEnemies = enemies.filter(e => e.plan_id !== undefined);
+  const unassignedEnemies = enemies.filter(e => e.plan_id === undefined);
 
   return (
-    <div className="space-y-6">
-      {/* Friendly Units Section */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-blue-500" />
-            Friendly Units ({soldiers.length})
-          </Label>
-        </div>
-
+    <div className="space-y-2">
+      {/* Friendly Units */}
+      <div className="space-y-1">
+        <Label className="flex items-center gap-1 text-[10px]">
+          <Users className="w-2.5 h-2.5 text-blue-500" />
+          Friendly ({soldiers.length})
+        </Label>
         <Button
-          onClick={handlePlaceSoldier}
-          className="w-full bg-blue-500 hover:bg-blue-600"
+          onClick={() => setMapMode('place-soldier')}
+          className="w-full bg-blue-500 hover:bg-blue-600 h-6 text-[10px]"
           variant={mapMode === 'place-soldier' ? 'default' : 'outline'}
         >
-          {mapMode === 'place-soldier' ? 'Click map to place' : 'Place Friendly Unit'}
+          {mapMode === 'place-soldier' ? 'Click map to place' : 'Place Friendly'}
         </Button>
-
-        {/* Placed soldiers list */}
-        <div className="space-y-1 max-h-40 overflow-y-auto">
-          {soldiers.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No friendly units placed yet
-            </p>
-          )}
-          {soldiers.map((soldier, index) => (
-            <div
-              key={soldier.unit_id}
-              className="flex items-center justify-between bg-secondary p-2 rounded text-sm"
-            >
-              <span className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                Friendly Unit #{index + 1}
-              </span>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => removeSoldier(soldier.unit_id)}
-                className="h-6 w-6 p-0"
+        {soldiers.length > 0 && (
+          <div className="space-y-0.5 max-h-16 overflow-y-auto">
+            {soldiers.map((soldier, i) => (
+              <div
+                key={soldier.unit_id}
+                className="flex items-center justify-between bg-secondary/50 px-1.5 py-0.5 rounded text-[9px]"
               >
-                <Trash2 className="w-3 h-3" />
-              </Button>
-            </div>
-          ))}
-        </div>
+                <span className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
+                  {getShortName(soldier, unassignedSoldiers.indexOf(soldier))}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => removeSoldier(soldier.unit_id)}
+                  className="h-4 w-4 p-0"
+                >
+                  <Trash2 className="w-2 h-2" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Enemy Units Section */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label className="flex items-center gap-2">
-            <Crosshair className="w-4 h-4 text-red-500" />
-            Enemy Units ({enemies.length})
-          </Label>
-        </div>
-
+      {/* Enemy Units */}
+      <div className="space-y-1">
+        <Label className="flex items-center gap-1 text-[10px]">
+          <Crosshair className="w-2.5 h-2.5 text-red-500" />
+          Enemy ({enemies.length})
+        </Label>
         <Button
-          onClick={handlePlaceEnemy}
-          className="w-full bg-red-500 hover:bg-red-600"
+          onClick={() => setMapMode('place-enemy')}
+          className="w-full bg-red-500 hover:bg-red-600 h-6 text-[10px]"
           variant={mapMode === 'place-enemy' ? 'default' : 'outline'}
         >
-          {mapMode === 'place-enemy' ? 'Click map to place' : 'Place Enemy Unit'}
+          {mapMode === 'place-enemy' ? 'Click map to place' : 'Place Enemy'}
         </Button>
-
-        {/* Placed enemies list */}
-        <div className="space-y-1 max-h-40 overflow-y-auto">
-          {enemies.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No enemy units placed yet
-            </p>
-          )}
-          {enemies.map((enemy, index) => (
-            <div
-              key={enemy.unit_id}
-              className="flex items-center justify-between bg-secondary p-2 rounded text-sm"
-            >
-              <span className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-red-500 rounded-full" />
-                Enemy Unit #{index + 1}
-              </span>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => removeEnemy(enemy.unit_id)}
-                className="h-6 w-6 p-0"
+        {enemies.length > 0 && (
+          <div className="space-y-0.5 max-h-16 overflow-y-auto">
+            {enemies.map((enemy, i) => (
+              <div
+                key={enemy.unit_id}
+                className="flex items-center justify-between bg-secondary/50 px-1.5 py-0.5 rounded text-[9px]"
               >
-                <Trash2 className="w-3 h-3" />
-              </Button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Instructions */}
-      <div className="text-xs text-muted-foreground bg-secondary/50 p-3 rounded">
-        <strong>Instructions:</strong>
-        <ul className="list-disc list-inside mt-1 space-y-1">
-          <li>Click "Place Friendly Unit" or "Place Enemy Unit"</li>
-          <li>Click on the map to place the unit</li>
-          <li>Drag units to reposition them</li>
-          <li>Click trash icon to remove units</li>
-        </ul>
+                <span className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 bg-red-500 rounded-full" />
+                  {getShortName(enemy, unassignedEnemies.indexOf(enemy))}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => removeEnemy(enemy.unit_id)}
+                  className="h-4 w-4 p-0"
+                >
+                  <Trash2 className="w-2 h-2" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

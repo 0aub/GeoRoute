@@ -170,15 +170,21 @@
     @apply absolute inset-0 bg-[hsl(var(--background-deep)/0.9)] backdrop-blur-sm z-50 flex items-center justify-center;
   }
   
-  /* Touch-friendly button sizing */
+  /* Compact button sizing */
   .btn-tactical {
-    @apply min-h-[44px] px-4 font-medium transition-all duration-200;
+    @apply min-h-[36px] px-3 font-medium transition-all duration-200 text-sm;
   }
   
   /* High contrast focus states */
   .focus-tactical {
     @apply focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-[hsl(var(--background-panel))];
   }
+}
+
+/* Dialog/Modal z-index fix - ensure it's above Leaflet map */
+[data-radix-dialog-overlay],
+[data-radix-dialog-content] {
+  z-index: 9999 !important;
 }
 
 /* Leaflet overrides for tactical theme */
@@ -189,14 +195,24 @@
 .leaflet-control-zoom a,
 .leaflet-control-layers-toggle {
   @apply !bg-[hsl(var(--background-panel))] !text-foreground !border-border hover:!bg-[hsl(var(--secondary))];
+  @apply !w-7 !h-7 !text-sm !leading-7;
+}
+
+.leaflet-control-zoom a {
+  @apply !w-6 !h-6 !text-xs !leading-6;
 }
 
 .leaflet-control-layers {
   @apply !bg-[hsl(var(--background-panel))] !text-foreground !border-border !rounded-md;
 }
 
+.leaflet-control-layers-toggle {
+  @apply !w-7 !h-7;
+  background-size: 16px 16px !important;
+}
+
 .leaflet-control-layers-expanded {
-  @apply !p-2;
+  @apply !p-1.5 !text-xs;
 }
 
 .leaflet-popup-content-wrapper {
