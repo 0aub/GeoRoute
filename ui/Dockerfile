@@ -6,8 +6,8 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json ./
 
-# Install dependencies
-RUN npm ci --legacy-peer-deps
+# Install dependencies (use npm install for better compatibility)
+RUN npm install --legacy-peer-deps
 
 EXPOSE 5173
 
