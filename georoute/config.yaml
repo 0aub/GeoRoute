@@ -10,8 +10,8 @@ route_generation:
 
 # Gemini AI Models
 gemini:
-  image_model: "gemini-3-pro-image-preview"  # For drawing routes on satellite images
-  text_model: "gemini-2.5-flash"             # For analysis and reports
+  image_model: "gemini-2.0-flash-exp"  # For drawing routes on satellite images (supports image output)
+  text_model: "gemini-2.5-flash"       # For analysis and reports
 
 # Route Generation Prompt
 route_prompt: |
