@@ -15,22 +15,9 @@ services:
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - CORS_ORIGINS=${CORS_ORIGINS}
       - RELOAD=true
-      - NVIDIA_VISIBLE_DEVICES=all
     volumes:
       # Mount source code for hot-reload (no rebuild needed)
       - ./georoute:/app/georoute:ro
-      # Cache for terrain data (ESA WorldCover, Copernicus DEM)
-      - terrain-cache:/app/terrain_cache
-      # Cache for SAM model checkpoints
-      - sam-cache:/root/.cache/torch
-    # GPU support for SAM inference
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${BACKEND_PORT}/api/health"]
       interval: 30s
@@ -72,8 +59,3 @@ networks:
   georoute-network:
     driver: bridge
 
-volumes:
-  terrain-cache:
-    driver: local
-  sam-cache:
-    driver: local
