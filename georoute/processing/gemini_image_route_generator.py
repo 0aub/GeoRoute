@@ -194,11 +194,12 @@ Routes go around buildings, use cover. NO text labels.
 
         # Call Gemini image model for route drawing
         # Use low temperature for more deterministic/consistent output
+        # Note: response_modalities must include both TEXT and IMAGE
         response = self.client.models.generate_content(
             model=self.image_model,
             contents=[prompt, marked_image],
             config=types.GenerateContentConfig(
-                response_modalities=['Image'],
+                response_modalities=['TEXT', 'IMAGE'],
                 temperature=0,  # Zero temperature = most deterministic
                 candidate_count=1,
             )
