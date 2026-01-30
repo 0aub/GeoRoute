@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import { Sidebar } from '@/components/sidebar/Sidebar';
 import { TacticalMap } from '@/components/map/TacticalMap';
 import { ConfigError } from '@/components/ConfigError';
@@ -105,7 +106,7 @@ const RoutePlanner = () => {
     }
 
     // Generate unique request ID for progress tracking
-    const requestId = crypto.randomUUID();
+    const requestId = uuidv4();
 
     setIsPlanning(true);
     setProgress(null);
