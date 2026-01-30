@@ -15,19 +15,30 @@ gemini:
 
 # Route Generation Prompt
 route_prompt: |
-  Edit this satellite image. Draw exactly 2 route lines from BLUE dot to RED dot.
+  Edit this satellite image. Draw exactly 2 infantry foot patrol routes from BLUE marker to RED marker.
 
-  ORANGE LINE (Route A):
-  - Take the main road, most direct path
-  - Single line, no branches
+  DRAWING RULES:
+  - Draw smooth, curved lines that follow natural walking paths
+  - NEVER cross through buildings - always go AROUND them
+  - Follow roads, sidewalks, alleys, and open ground
+  - Lines should curve naturally like a person walking, not straight angular segments
+  - Use cover: stay close to walls, trees, and shadows where possible
 
-  GREEN LINE (Route B):
-  - Take a different, longer path
-  - Go around the other side of buildings
-  - Single line, no branches
+  ORANGE LINE (Primary Route):
+  - Most direct path while avoiding obstacles
+  - Prefer main roads and open paths
+  - Single continuous curved line from blue to red
 
-  CRITICAL: Each route is ONE line only. Like tracing with your finger from blue to red.
-  Do not draw loops, branches, or multiple paths for either color.
+  GREEN LINE (Stealth Route):
+  - Longer, more concealed path
+  - Use back alleys, building shadows, vegetation
+  - Avoid open areas, stay near cover
+  - Single continuous curved line from blue to red
+
+  CRITICAL:
+  - Routes must NEVER pass through any building or structure
+  - Draw natural curved paths, not straight lines or sharp angles
+  - Each route is ONE continuous line only - no branches or loops
   
     
 # Tactical Analysis Prompt (for advanced analytics)
