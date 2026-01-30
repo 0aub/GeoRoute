@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { v4 as uuidv4 } from 'uuid';
 import type {
   Coordinate,
   MapMode,
@@ -137,7 +138,7 @@ export const useMission = create<MissionState>((set, get) => ({
     const { soldiers } = get();
     const newSoldier: TacticalUnit = {
       ...unit,
-      unit_id: crypto.randomUUID(),
+      unit_id: uuidv4(),
       is_friendly: true,
     };
     set({ soldiers: [...soldiers, newSoldier], mapMode: 'idle' });
@@ -161,7 +162,7 @@ export const useMission = create<MissionState>((set, get) => ({
     const { enemies } = get();
     const newEnemy: TacticalUnit = {
       ...unit,
-      unit_id: crypto.randomUUID(),
+      unit_id: uuidv4(),
       is_friendly: false,
     };
     set({ enemies: [...enemies, newEnemy], mapMode: 'idle' });
@@ -225,7 +226,7 @@ export const useMission = create<MissionState>((set, get) => ({
     let updatedHistory = tacticalReportHistory;
     if (tacticalAnalysisReport) {
       const newEntry: TacticalReportEntry = {
-        id: crypto.randomUUID(),
+        id: uuidv4(),
         timestamp: new Date(),
         centerCoords,
         report: tacticalAnalysisReport as TacticalReportEntry['report'],
