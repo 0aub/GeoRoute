@@ -1,20 +1,59 @@
-import { XCircle, Crosshair } from 'lucide-react';
+import { XCircle, Crosshair, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useMission } from '@/hooks/useMission';
 
 interface ActionButtonsProps {
   onPlanTacticalAttack: () => void;
+  onEvaluateRoute?: () => void;
   isLoading: boolean;
 }
 
 export const ActionButtons = ({
   onPlanTacticalAttack,
+  onEvaluateRoute,
   isLoading,
 }: ActionButtonsProps) => {
-  const { soldiers, enemies, clearAll } = useMission();
+  const { soldiers, enemies, clearAll, routeMode, drawnWaypoints, isEvaluating } = useMission();
 
   const canPlanTactical = soldiers.length > 0 && enemies.length > 0 && !isLoading;
+  const canEvaluateRoute = drawnWaypoints.length >= 2 && !isLoading && !isEvaluating;
 
+  // Manual draw mode shows Evaluate button
+  if (routeMode === 'manual-draw') {
+    return (
+      <div className="space-y-1.5">
+        <Button
+          className="w-full h-7 text-xs bg-primary hover:bg-primary/90 text-primary-foreground"
+          onClick={onEvaluateRoute}
+          disabled={!canEvaluateRoute}
+        >
+          {isEvaluating ? (
+            <>
+              <div className="w-3 h-3 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin mr-1.5" />
+              Evaluating...
+            </>
+          ) : (
+            <>
+              <Search className="w-3 h-3 mr-1.5" />
+              Evaluate Route
+            </>
+          )}
+        </Button>
+
+        <Button
+          variant="ghost"
+          className="w-full h-6 text-[10px] text-muted-foreground hover:text-danger hover:bg-danger/10"
+          onClick={clearAll}
+          disabled={isLoading || isEvaluating}
+        >
+          <XCircle className="w-3 h-3 mr-1" />
+          Clear All
+        </Button>
+      </div>
+    );
+  }
+
+  // AI generate mode shows Plan Attack button
   return (
     <div className="space-y-1.5">
       <Button

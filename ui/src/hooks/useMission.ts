@@ -32,6 +32,58 @@ export interface TacticalReportEntry {
   };
 }
 
+// Route drawing mode
+export type RouteMode = 'ai-generate' | 'manual-draw';
+
+// Drawn waypoint
+export interface DrawnWaypoint {
+  lat: number;
+  lng: number;
+}
+
+// Unit composition for evaluation
+export interface UnitComposition {
+  squadSize: number;
+  riflemen: number;
+  snipers: number;
+  support: number;
+  medics: number;
+}
+
+// Suggested position from AI
+export interface SuggestedPosition {
+  position_type: string;
+  lat: number;
+  lng: number;
+  description: string;
+  for_unit?: string;
+  icon: string;
+}
+
+// Segment analysis from AI
+export interface SegmentAnalysis {
+  segment_index: number;
+  start_lat: number;
+  start_lng: number;
+  end_lat: number;
+  end_lng: number;
+  risk_level: string;
+  description: string;
+  suggestions: string[];
+}
+
+// Route evaluation result
+export interface RouteEvaluationResult {
+  request_id: string;
+  annotated_image: string;
+  annotated_image_bounds: Bounds;
+  positions: SuggestedPosition[];
+  segment_analysis: SegmentAnalysis[];
+  overall_assessment: string;
+  route_distance_m: number;
+  estimated_time_minutes: number;
+}
+
 interface MissionState {
   // Tactical Units
   soldiers: TacticalUnit[];
@@ -59,6 +111,13 @@ interface MissionState {
   tacticalReportHistory: TacticalReportEntry[];
   selectedReportId: string | null;
   reportModalOpen: boolean;
+
+  // Route Drawing Mode
+  routeMode: RouteMode;
+  drawnWaypoints: DrawnWaypoint[];
+  unitComposition: UnitComposition;
+  routeEvaluation: RouteEvaluationResult | null;
+  isEvaluating: boolean;
 
   // Map mode
   mapMode: MapMode;
@@ -98,6 +157,16 @@ interface MissionState {
   removeReportFromHistory: (id: string) => void;
   selectReport: (id: string | null) => void;
   setReportModalOpen: (open: boolean) => void;
+
+  // Route Drawing actions
+  setRouteMode: (mode: RouteMode) => void;
+  addDrawnWaypoint: (lat: number, lng: number) => void;
+  updateDrawnWaypoint: (index: number, lat: number, lng: number) => void;
+  removeDrawnWaypoint: (index: number) => void;
+  clearDrawnWaypoints: () => void;
+  setUnitComposition: (units: Partial<UnitComposition>) => void;
+  setRouteEvaluation: (result: RouteEvaluationResult | null) => void;
+  setIsEvaluating: (evaluating: boolean) => void;
 }
 
 export const useMission = create<MissionState>((set, get) => ({
@@ -121,6 +190,19 @@ export const useMission = create<MissionState>((set, get) => ({
   tacticalReportHistory: [],
   selectedReportId: null,
   reportModalOpen: false,
+
+  // Route Drawing Mode
+  routeMode: 'ai-generate',
+  drawnWaypoints: [],
+  unitComposition: {
+    squadSize: 4,
+    riflemen: 2,
+    snipers: 1,
+    support: 0,
+    medics: 1,
+  },
+  routeEvaluation: null,
+  isEvaluating: false,
 
   // UI state
   mapMode: 'idle',
@@ -325,6 +407,39 @@ export const useMission = create<MissionState>((set, get) => ({
 
   setReportModalOpen: (open) => set({ reportModalOpen: open }),
 
+  // Route Drawing actions
+  setRouteMode: (mode) => set({ routeMode: mode, drawnWaypoints: [], routeEvaluation: null }),
+
+  addDrawnWaypoint: (lat, lng) => {
+    const { drawnWaypoints } = get();
+    set({ drawnWaypoints: [...drawnWaypoints, { lat, lng }] });
+  },
+
+  updateDrawnWaypoint: (index, lat, lng) => {
+    const { drawnWaypoints } = get();
+    const updated = [...drawnWaypoints];
+    if (index >= 0 && index < updated.length) {
+      updated[index] = { lat, lng };
+      set({ drawnWaypoints: updated });
+    }
+  },
+
+  removeDrawnWaypoint: (index) => {
+    const { drawnWaypoints } = get();
+    set({ drawnWaypoints: drawnWaypoints.filter((_, i) => i !== index) });
+  },
+
+  clearDrawnWaypoints: () => set({ drawnWaypoints: [], routeEvaluation: null }),
+
+  setUnitComposition: (units) => {
+    const { unitComposition } = get();
+    set({ unitComposition: { ...unitComposition, ...units } });
+  },
+
+  setRouteEvaluation: (result) => set({ routeEvaluation: result }),
+
+  setIsEvaluating: (evaluating) => set({ isEvaluating: evaluating }),
+
   clearAll: () =>
     set({
       soldiers: [],
@@ -341,5 +456,10 @@ export const useMission = create<MissionState>((set, get) => ({
       tacticalAnalysisReport: null,
       mapMode: 'idle',
       isPlanning: false,
+      // Reset route drawing state
+      routeMode: 'ai-generate',
+      drawnWaypoints: [],
+      routeEvaluation: null,
+      isEvaluating: false,
     }),
 }));

@@ -12,6 +12,8 @@ from fastapi.responses import StreamingResponse
 from ..models.tactical import (
     TacticalPlanRequest,
     TacticalPlanResponse,
+    RouteEvaluationRequest,
+    RouteEvaluationResponse,
 )
 from ..processing.balanced_tactical_pipeline import BalancedTacticalPipeline
 from ..config import load_config
@@ -119,3 +121,37 @@ async def plan_tactical_attack(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Tactical planning failed: {str(e)}")
+
+
+@router.post("/evaluate-route", response_model=RouteEvaluationResponse)
+async def evaluate_route(
+    request: RouteEvaluationRequest,
+    pipeline: Annotated[BalancedTacticalPipeline, Depends(get_tactical_pipeline)],
+) -> RouteEvaluationResponse:
+    """
+    Evaluate a user-drawn route and suggest tactical positions.
+
+    Process:
+    1. Fetch satellite imagery for the route bounds
+    2. Draw user's route on the satellite image
+    3. Send to Gemini for tactical evaluation
+    4. Parse suggested positions and segment analysis
+    5. Return annotated image with analysis
+
+    Returns:
+        Route evaluation with annotated image and suggested positions
+    """
+    try:
+        # Use client-provided request_id for progress tracking
+        progress_id = request.request_id or 'default'
+
+        # Set progress callback for real-time updates
+        pipeline.set_progress_callback(
+            lambda stage, progress, msg: update_progress(progress_id, stage, progress, msg)
+        )
+        response = await pipeline.evaluate_user_route(request)
+        return response
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Route evaluation failed: {str(e)}")

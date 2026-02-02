@@ -120,11 +120,17 @@ export const TacticalMap = () => {
     routePolylines: L.Polyline[];
     samOverlay: L.ImageOverlay | null;
     planOverlays: Record<number, L.ImageOverlay>;
+    drawnWaypointMarkers: L.CircleMarker[];
+    drawnRoutePolyline: L.Polyline | null;
+    evaluationOverlay: L.ImageOverlay | null;
   }>({
     unitMarkers: [],
     routePolylines: [],
     samOverlay: null,
     planOverlays: {},
+    drawnWaypointMarkers: [],
+    drawnRoutePolyline: null,
+    evaluationOverlay: null,
   });
 
   const {
@@ -141,6 +147,11 @@ export const TacticalMap = () => {
     samVisualization,
     samVisualizationBounds,
     planImages,
+    // Route drawing state
+    drawnWaypoints,
+    addDrawnWaypoint,
+    updateDrawnWaypoint,
+    routeEvaluation,
   } = useMission();
 
   // Initialize map
@@ -234,7 +245,7 @@ export const TacticalMap = () => {
       const coord: Coordinate = { lat: e.latlng.lat, lon: e.latlng.lng };
 
       // Validate Gulf region for tactical operations
-      if ((mapMode === 'place-soldier' || mapMode === 'place-enemy') && !isInGulfRegion(coord.lat, coord.lon)) {
+      if ((mapMode === 'place-soldier' || mapMode === 'place-enemy' || mapMode === 'draw-route') && !isInGulfRegion(coord.lat, coord.lon)) {
         L.popup()
           .setLatLng(e.latlng)
           .setContent(
@@ -250,6 +261,8 @@ export const TacticalMap = () => {
         addSoldier({ lat: coord.lat, lon: coord.lon, is_friendly: true });
       } else if (mapMode === 'place-enemy') {
         addEnemy({ lat: coord.lat, lon: coord.lon, is_friendly: false });
+      } else if (mapMode === 'draw-route') {
+        addDrawnWaypoint(coord.lat, coord.lon);
       }
     };
 
@@ -257,7 +270,7 @@ export const TacticalMap = () => {
     return () => {
       map.off('click', handleClick);
     };
-  }, [mapMode, addSoldier, addEnemy]);
+  }, [mapMode, addSoldier, addEnemy, addDrawnWaypoint]);
 
   // Update unit markers - always show markers
   useEffect(() => {
@@ -462,13 +475,126 @@ export const TacticalMap = () => {
     };
   }, [planImages]);
 
+  // Render drawn route waypoints and polyline
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    // Clear existing drawn route visualization
+    markersRef.current.drawnWaypointMarkers.forEach((m) => map.removeLayer(m));
+    markersRef.current.drawnWaypointMarkers = [];
+    if (markersRef.current.drawnRoutePolyline) {
+      map.removeLayer(markersRef.current.drawnRoutePolyline);
+      markersRef.current.drawnRoutePolyline = null;
+    }
+
+    // Don't render if no waypoints
+    if (drawnWaypoints.length === 0) return;
+
+    // Create waypoint markers
+    drawnWaypoints.forEach((wp, index) => {
+      // Color: first = blue, last = red, middle = white
+      let color = '#ffffff';
+      if (index === 0) color = '#3b82f6';
+      else if (index === drawnWaypoints.length - 1) color = '#ef4444';
+
+      const marker = L.circleMarker([wp.lat, wp.lng], {
+        radius: 6,
+        fillColor: color,
+        fillOpacity: 1,
+        color: '#ffffff',
+        weight: 2,
+        className: 'drawn-waypoint',
+      })
+        .on('drag', (e: any) => {
+          const newPos = e.target.getLatLng();
+          updateDrawnWaypoint(index, newPos.lat, newPos.lng);
+        })
+        .addTo(map);
+
+      // Make draggable by adding custom drag behavior
+      marker.on('mousedown', function(e) {
+        map.dragging.disable();
+        const onMove = (moveEvent: L.LeafletMouseEvent) => {
+          marker.setLatLng(moveEvent.latlng);
+        };
+        const onUp = () => {
+          map.dragging.enable();
+          map.off('mousemove', onMove);
+          map.off('mouseup', onUp);
+          const newPos = marker.getLatLng();
+          updateDrawnWaypoint(index, newPos.lat, newPos.lng);
+        };
+        map.on('mousemove', onMove);
+        map.on('mouseup', onUp);
+      });
+
+      markersRef.current.drawnWaypointMarkers.push(marker);
+    });
+
+    // Create connecting polyline (dashed blue)
+    if (drawnWaypoints.length >= 2) {
+      const coords = drawnWaypoints.map((wp) => [wp.lat, wp.lng] as [number, number]);
+      markersRef.current.drawnRoutePolyline = L.polyline(coords, {
+        color: '#3b82f6',
+        weight: 3,
+        opacity: 0.8,
+        dashArray: '10, 6',
+      }).addTo(map);
+    }
+
+    return () => {
+      markersRef.current.drawnWaypointMarkers.forEach((m) => map.removeLayer(m));
+      if (markersRef.current.drawnRoutePolyline) {
+        map.removeLayer(markersRef.current.drawnRoutePolyline);
+      }
+    };
+  }, [drawnWaypoints, updateDrawnWaypoint]);
+
+  // Render route evaluation annotated image overlay
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    // Clear existing evaluation overlay
+    if (markersRef.current.evaluationOverlay) {
+      map.removeLayer(markersRef.current.evaluationOverlay);
+      markersRef.current.evaluationOverlay = null;
+    }
+
+    // Add evaluation overlay if available
+    if (routeEvaluation?.annotated_image && routeEvaluation?.annotated_image_bounds) {
+      const imageUrl = `data:image/png;base64,${routeEvaluation.annotated_image}`;
+      const bounds: L.LatLngBoundsExpression = [
+        [routeEvaluation.annotated_image_bounds.south, routeEvaluation.annotated_image_bounds.west],
+        [routeEvaluation.annotated_image_bounds.north, routeEvaluation.annotated_image_bounds.east],
+      ];
+
+      markersRef.current.evaluationOverlay = L.imageOverlay(imageUrl, bounds, {
+        opacity: 0.95,
+        interactive: false,
+      }).addTo(map);
+
+      // Fit map to the evaluation bounds
+      map.fitBounds(bounds, { padding: [50, 50] });
+    }
+
+    return () => {
+      if (markersRef.current.evaluationOverlay) {
+        map.removeLayer(markersRef.current.evaluationOverlay);
+      }
+    };
+  }, [routeEvaluation]);
+
   // Change cursor based on mode
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
     const container = map.getContainer();
-    if (mapMode !== 'idle') {
+    if (mapMode === 'draw-route') {
+      container.style.cursor = 'crosshair';
+    } else if (mapMode !== 'idle') {
       container.style.cursor = 'crosshair';
     } else {
       container.style.cursor = '';

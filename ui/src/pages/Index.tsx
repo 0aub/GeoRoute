@@ -8,6 +8,7 @@ import { isConfigured } from '@/config/env';
 import { useMission } from '@/hooks/useMission';
 import {
   usePlanTacticalAttack,
+  useEvaluateRoute,
   useHealth,
   subscribeToProgress,
   type ProgressUpdate,
@@ -29,10 +30,17 @@ const RoutePlanner = () => {
     setTacticalRoutes,
     currentZoom,
     advancedAnalytics,
+    // Route evaluation
+    drawnWaypoints,
+    unitComposition,
+    setRouteEvaluation,
+    setIsEvaluating,
+    isEvaluating,
   } = useMission();
 
   const { data: health, isError } = useHealth();
   const planTacticalAttack = usePlanTacticalAttack();
+  const evaluateRoute = useEvaluateRoute();
 
   // Update connection status based on health check
   useEffect(() => {
@@ -165,12 +173,95 @@ const RoutePlanner = () => {
     }
   };
 
+  // Handle route evaluation (manual draw mode)
+  const handleEvaluateRoute = async () => {
+    if (drawnWaypoints.length < 2) {
+      toast({
+        title: 'Insufficient Waypoints',
+        description: 'Please draw at least 2 waypoints to evaluate a route.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Generate unique request ID for progress tracking
+    const requestId = uuidv4();
+
+    setIsEvaluating(true);
+    setProgress(null);
+
+    // Subscribe to progress updates
+    unsubscribeRef.current = subscribeToProgress(
+      requestId,
+      (update) => {
+        setProgress(update);
+      },
+      (error) => {
+        console.error('[RouteEvaluation] Progress stream error:', error);
+      }
+    );
+
+    try {
+      // Calculate bounds from waypoints
+      const lats = drawnWaypoints.map((wp) => wp.lat);
+      const lngs = drawnWaypoints.map((wp) => wp.lng);
+      const padding = 0.002; // ~200m padding
+
+      const bounds: Bounds = {
+        north: Math.max(...lats) + padding,
+        south: Math.min(...lats) - padding,
+        east: Math.max(...lngs) + padding,
+        west: Math.min(...lngs) - padding,
+      };
+
+      const result = await evaluateRoute.mutateAsync({
+        request_id: requestId,
+        waypoints: drawnWaypoints,
+        units: {
+          squad_size: unitComposition.squadSize,
+          riflemen: unitComposition.riflemen,
+          snipers: unitComposition.snipers,
+          support: unitComposition.support,
+          medics: unitComposition.medics,
+        },
+        bounds,
+      });
+
+      if (result) {
+        setRouteEvaluation(result);
+        toast({
+          title: 'Route Evaluated',
+          description: `Found ${result.positions.length} tactical positions. Check the sidebar for details.`,
+        });
+      } else {
+        throw new Error('Invalid response format from server');
+      }
+    } catch (error: any) {
+      console.error('[RouteEvaluation] Error:', error);
+      toast({
+        title: 'Evaluation Failed',
+        description: error.message || 'Failed to evaluate route. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsEvaluating(false);
+      setProgress(null);
+
+      // Cleanup SSE subscription
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
+    }
+  };
+
   return (
     <div className="h-screen w-screen flex bg-background-deep overflow-hidden">
       {/* Left Sidebar */}
       <Sidebar
         onPlanTacticalAttack={handlePlanTacticalAttack}
-        isLoading={isPlanning}
+        onEvaluateRoute={handleEvaluateRoute}
+        isLoading={isPlanning || isEvaluating}
         isConnected={isConnected}
       />
 
@@ -183,7 +274,7 @@ const RoutePlanner = () => {
       </div>
 
       {/* Loading Animation - Full Screen Overlay with REAL progress */}
-      {isPlanning && <PlanningLoader progress={progress} advancedAnalytics={advancedAnalytics} />}
+      {(isPlanning || isEvaluating) && <PlanningLoader progress={progress} advancedAnalytics={advancedAnalytics} />}
     </div>
   );
 };

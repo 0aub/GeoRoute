@@ -29,6 +29,18 @@ class RouteGenerationResult:
     error_message: Optional[str] = None
 
 
+@dataclass
+class RouteEvaluationResult:
+    """Result from Gemini route evaluation."""
+    annotated_image_base64: str  # Image with tactical positions marked
+    success: bool
+    positions: list  # List of suggested positions
+    segment_analysis: list  # Analysis of each route segment
+    overall_assessment: str
+    adjusted_bounds: Optional[dict] = None
+    error_message: Optional[str] = None
+
+
 class GeminiImageRouteGenerator:
     """
     Generates tactical routes using Gemini 3 Pro Image.
@@ -327,3 +339,242 @@ Be specific and actionable based on what you can see in the satellite imagery.""
             print(f"[GeminiImageRoute] Advanced analysis failed: {e}")
             # Return None - don't show fake data
             return None
+
+    def _draw_user_route(
+        self,
+        image_base64: str,
+        waypoints: list,
+        bounds: dict
+    ) -> Tuple[Image.Image, dict]:
+        """
+        Draw user's route on satellite image as a dashed blue line.
+
+        Args:
+            image_base64: Base64-encoded satellite image
+            waypoints: List of {lat, lng} waypoints
+            bounds: Geographic bounds of the image
+
+        Returns:
+            (image_with_route, bounds)
+        """
+        import json
+
+        # Decode image
+        image_data = base64.b64decode(image_base64)
+        image = Image.open(io.BytesIO(image_data)).convert("RGB")
+        width, height = image.size
+        draw = ImageDraw.Draw(image)
+
+        print(f"[GeminiImageRoute] Drawing user route with {len(waypoints)} waypoints")
+
+        def gps_to_pixel(lat: float, lng: float) -> tuple[int, int]:
+            """Convert GPS to pixel coordinates using bounds."""
+            px = int((lng - bounds["west"]) / (bounds["east"] - bounds["west"]) * width)
+            py = int((bounds["north"] - lat) / (bounds["north"] - bounds["south"]) * height)
+            return (max(0, min(width-1, px)), max(0, min(height-1, py)))
+
+        # Convert waypoints to pixel coordinates
+        pixels = []
+        for wp in waypoints:
+            lat = wp.get('lat') or wp.get('latitude')
+            lng = wp.get('lng') or wp.get('longitude') or wp.get('lon')
+            px = gps_to_pixel(lat, lng)
+            pixels.append(px)
+
+        # Draw route as dashed blue line
+        route_color = (0, 150, 255)  # Bright blue
+        line_width = max(3, int(width / 200))  # Scale with image size
+        dash_length = max(10, int(width / 50))
+
+        for i in range(len(pixels) - 1):
+            start = pixels[i]
+            end = pixels[i + 1]
+
+            # Draw dashed line between points
+            dx = end[0] - start[0]
+            dy = end[1] - start[1]
+            distance = (dx**2 + dy**2) ** 0.5
+
+            if distance > 0:
+                # Calculate number of dashes
+                num_dashes = int(distance / (dash_length * 2)) + 1
+                for j in range(num_dashes):
+                    # Start and end of each dash
+                    t1 = (j * 2 * dash_length) / distance
+                    t2 = ((j * 2 + 1) * dash_length) / distance
+                    if t1 > 1:
+                        break
+                    t2 = min(t2, 1)
+
+                    dash_start = (int(start[0] + dx * t1), int(start[1] + dy * t1))
+                    dash_end = (int(start[0] + dx * t2), int(start[1] + dy * t2))
+
+                    draw.line([dash_start, dash_end], fill=route_color, width=line_width)
+
+        # Draw waypoint markers (small circles)
+        marker_radius = max(4, int(width / 150))
+        for i, px in enumerate(pixels):
+            # First point = blue, last point = red, middle = white
+            if i == 0:
+                color = (0, 100, 255)  # Blue start
+            elif i == len(pixels) - 1:
+                color = (255, 50, 50)  # Red end
+            else:
+                color = (255, 255, 255)  # White waypoint
+
+            draw.ellipse(
+                [px[0] - marker_radius, px[1] - marker_radius,
+                 px[0] + marker_radius, px[1] + marker_radius],
+                fill=color,
+                outline=(255, 255, 255),
+                width=2
+            )
+
+        print(f"[GeminiImageRoute] Route drawn with {len(pixels)} points")
+        return image, bounds
+
+    async def evaluate_user_route(
+        self,
+        satellite_image_base64: str,
+        waypoints: list,
+        units: dict,
+        bounds: dict
+    ) -> RouteEvaluationResult:
+        """
+        Evaluate a user-drawn route and suggest tactical positions.
+
+        Args:
+            satellite_image_base64: Base64-encoded satellite image
+            waypoints: List of {lat, lng} waypoints defining the route
+            units: Unit composition {squad_size, riflemen, snipers, support, medics}
+            bounds: Geographic bounds of the image
+
+        Returns:
+            RouteEvaluationResult with annotated image and analysis
+        """
+        import json
+        import re
+
+        print(f"[GeminiImageRoute] Evaluating user route with {len(waypoints)} waypoints")
+        print(f"[GeminiImageRoute] Unit composition: {units}")
+
+        # Draw user's route on the satellite image
+        marked_image, adjusted_bounds = self._draw_user_route(
+            satellite_image_base64,
+            waypoints,
+            bounds
+        )
+
+        # Get evaluation prompt from config and fill in unit details
+        prompt_template = get_yaml_setting("route_evaluation_prompt", default="""
+Analyze this satellite image showing a user-planned route (BLUE DASHED LINE).
+Mark tactical positions on the image and provide analysis.
+""")
+
+        prompt = prompt_template.format(
+            squad_size=units.get('squad_size', 4),
+            riflemen=units.get('riflemen', 2),
+            snipers=units.get('snipers', 1),
+            support=units.get('support', 0),
+            medics=units.get('medics', 1)
+        )
+
+        print(f"[GeminiImageRoute] Sending route for evaluation...")
+
+        # Call Gemini image model for route evaluation
+        response = self.client.models.generate_content(
+            model=self.image_model,
+            contents=[prompt, marked_image],
+            config=types.GenerateContentConfig(
+                response_modalities=['TEXT', 'IMAGE'],
+                temperature=0.2,  # Slight variation for position suggestions
+                candidate_count=1,
+            )
+        )
+
+        print(f"[GeminiImageRoute] Evaluation response received, parsing...")
+
+        # Extract image and text from response
+        annotated_image_data = None
+        response_text = ""
+
+        for part in response.candidates[0].content.parts:
+            if part.inline_data is not None:
+                annotated_image_data = part.inline_data.data
+                print(f"[GeminiImageRoute] Got annotated image: {len(annotated_image_data)} bytes")
+            elif hasattr(part, 'text') and part.text:
+                response_text += part.text
+
+        if annotated_image_data is None:
+            error_msg = "Gemini did not return an annotated image"
+            print(f"[GeminiImageRoute] ERROR: {error_msg}")
+            raise RuntimeError(error_msg)
+
+        # Encode annotated image to base64
+        annotated_image = Image.open(io.BytesIO(annotated_image_data))
+        buffer = io.BytesIO()
+        annotated_image.save(buffer, format='PNG', optimize=False)
+        annotated_image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+        # Parse JSON analysis from response text
+        positions = []
+        segment_analysis = []
+        overall_assessment = "Route evaluation complete."
+
+        try:
+            # Find JSON in response text
+            json_match = re.search(r'\{[\s\S]*\}', response_text)
+            if json_match:
+                analysis = json.loads(json_match.group())
+
+                # Extract positions
+                if 'positions' in analysis:
+                    for pos in analysis['positions']:
+                        positions.append({
+                            'position_type': pos.get('type', 'cover'),
+                            'description': pos.get('description', ''),
+                            'for_unit': pos.get('for_unit'),
+                            'icon': self._get_position_icon(pos.get('type', 'cover'))
+                        })
+
+                # Extract segment analysis
+                if 'segments' in analysis:
+                    for i, seg in enumerate(analysis['segments']):
+                        segment_analysis.append({
+                            'segment_index': seg.get('index', i),
+                            'risk_level': seg.get('risk', 'medium'),
+                            'description': seg.get('description', ''),
+                            'suggestions': seg.get('suggestions', [])
+                        })
+
+                # Extract overall assessment
+                if 'overall' in analysis:
+                    overall_assessment = analysis['overall']
+
+                print(f"[GeminiImageRoute] Parsed {len(positions)} positions, {len(segment_analysis)} segments")
+
+        except json.JSONDecodeError as e:
+            print(f"[GeminiImageRoute] Could not parse JSON analysis: {e}")
+            overall_assessment = response_text[:500] if response_text else "Route evaluation complete."
+
+        print(f"[GeminiImageRoute] Route evaluation complete")
+
+        return RouteEvaluationResult(
+            annotated_image_base64=annotated_image_base64,
+            success=True,
+            positions=positions,
+            segment_analysis=segment_analysis,
+            overall_assessment=overall_assessment,
+            adjusted_bounds=adjusted_bounds
+        )
+
+    def _get_position_icon(self, position_type: str) -> str:
+        """Get icon name for position type."""
+        icons = {
+            'overwatch': 'crosshair',
+            'cover': 'shield',
+            'rally': 'flag',
+            'danger': 'alert-triangle',
+            'medic': 'plus-circle'
+        }
+        return icons.get(position_type, 'map-pin')

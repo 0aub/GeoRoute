@@ -4,7 +4,13 @@ import type {
   HealthStatus,
   TacticalPlanRequest,
   TacticalPlanResponse,
+  Bounds,
 } from '@/types';
+import type {
+  DrawnWaypoint,
+  UnitComposition,
+  RouteEvaluationResult,
+} from './useMission';
 
 const apiUrl = getApiUrl();
 
@@ -54,6 +60,33 @@ export const usePlanTacticalAttack = () => {
   return useMutation<TacticalPlanResponse, Error, TacticalPlanRequest>({
     mutationFn: (request) =>
       fetchWithError('/api/plan-tactical-attack', {
+        method: 'POST',
+        body: JSON.stringify(request),
+      }),
+  });
+};
+
+// ============================================================================
+// Route Evaluation API
+// ============================================================================
+
+export interface RouteEvaluationRequest {
+  request_id?: string;
+  waypoints: DrawnWaypoint[];
+  units: {
+    squad_size: number;
+    riflemen: number;
+    snipers: number;
+    support: number;
+    medics: number;
+  };
+  bounds: Bounds;
+}
+
+export const useEvaluateRoute = () => {
+  return useMutation<RouteEvaluationResult, Error, RouteEvaluationRequest>({
+    mutationFn: (request) =>
+      fetchWithError('/api/evaluate-route', {
         method: 'POST',
         body: JSON.stringify(request),
       }),

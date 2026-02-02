@@ -3,20 +3,28 @@ import { ActionButtons } from './ActionButtons';
 import { UnitPlacement } from './UnitPlacement';
 import { TacticalRouteResults } from './TacticalRouteResults';
 import { AdvancedSettings } from './AdvancedSettings';
+import { RouteDrawingControls } from './RouteDrawingControls';
+import { UnitCompositionPanel } from './UnitCompositionPanel';
+import { EvaluationResults } from './EvaluationResults';
 import { TacticalReportModal } from '@/components/tactical/TacticalReportModal';
 import { Separator } from '@/components/ui/separator';
+import { useMission } from '@/hooks/useMission';
 
 interface SidebarProps {
   onPlanTacticalAttack: () => void;
+  onEvaluateRoute: () => void;
   isLoading: boolean;
   isConnected?: boolean;
 }
 
 export const Sidebar = ({
   onPlanTacticalAttack,
+  onEvaluateRoute,
   isLoading,
   isConnected = true,
 }: SidebarProps) => {
+  const { routeMode, routeEvaluation } = useMission();
+
   return (
     <aside className="w-52 h-full bg-background-panel border-r border-border flex flex-col shrink-0">
       {/* Logo Header - Compact */}
@@ -44,23 +52,44 @@ export const Sidebar = ({
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto tactical-scroll p-2 space-y-2">
-        {/* Unit Placement for Tactical Planning */}
-        <UnitPlacement />
+        {/* Route Mode Toggle */}
+        <RouteDrawingControls />
 
         <Separator className="bg-border" />
 
-        {/* Advanced Analytics Settings */}
-        <AdvancedSettings />
+        {/* AI Generate Mode: Unit placement */}
+        {routeMode === 'ai-generate' && (
+          <>
+            <UnitPlacement />
+            <Separator className="bg-border" />
+            <AdvancedSettings />
+            <Separator className="bg-border" />
+            <ActionButtons
+              onPlanTacticalAttack={onPlanTacticalAttack}
+              isLoading={isLoading}
+            />
+            <TacticalRouteResults onRegenerate={onPlanTacticalAttack} />
+          </>
+        )}
 
-        <Separator className="bg-border" />
-
-        <ActionButtons
-          onPlanTacticalAttack={onPlanTacticalAttack}
-          isLoading={isLoading}
-        />
-
-        {/* Tactical Route Results */}
-        <TacticalRouteResults onRegenerate={onPlanTacticalAttack} />
+        {/* Manual Draw Mode: Unit composition + Evaluate button */}
+        {routeMode === 'manual-draw' && (
+          <>
+            <UnitCompositionPanel />
+            <Separator className="bg-border" />
+            <ActionButtons
+              onPlanTacticalAttack={onPlanTacticalAttack}
+              onEvaluateRoute={onEvaluateRoute}
+              isLoading={isLoading}
+            />
+            {routeEvaluation && (
+              <>
+                <Separator className="bg-border" />
+                <EvaluationResults />
+              </>
+            )}
+          </>
+        )}
       </div>
 
       {/* Tactical Report Modal */}

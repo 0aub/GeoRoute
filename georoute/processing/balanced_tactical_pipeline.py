@@ -32,6 +32,10 @@ from ..models.tactical import (
     ClassificationResult,
     RiskLevel,
     RouteVerdict,
+    RouteEvaluationRequest,
+    RouteEvaluationResponse,
+    SuggestedPosition,
+    SegmentAnalysis,
 )
 from ..utils.geo_validator import GulfRegionValidator
 from ..config import load_config
@@ -670,3 +674,140 @@ Verdicts: SUCCESS (viable), RISK (caution needed), FAILED (not recommended)
         self._report_progress("routes", 100, "Tactical plan ready!")
 
         return response
+
+    async def evaluate_user_route(
+        self,
+        request: RouteEvaluationRequest
+    ) -> RouteEvaluationResponse:
+        """
+        Evaluate a user-drawn route and suggest tactical positions.
+
+        1. Fetches satellite imagery for the route bounds
+        2. Draws user's route on the satellite image
+        3. Sends to Gemini for tactical evaluation
+        4. Parses suggested positions and segment analysis
+        5. Returns annotated image with analysis
+        """
+        request_id = request.request_id or str(uuid.uuid4())
+        start_time = datetime.utcnow()
+
+        self._report_progress("imagery", 5, "Validating route...")
+
+        # Validate we have enough waypoints
+        if len(request.waypoints) < 2:
+            raise ValueError("Route must have at least 2 waypoints")
+
+        # Calculate bounds from waypoints
+        lats = [wp.lat for wp in request.waypoints]
+        lngs = [wp.lng for wp in request.waypoints]
+
+        # Add padding to bounds
+        lat_span = max(lats) - min(lats)
+        lng_span = max(lngs) - min(lngs)
+        padding = max(lat_span, lng_span) * 0.3 + 0.001  # At least ~100m padding
+
+        route_bounds = {
+            "north": max(lats) + padding,
+            "south": min(lats) - padding,
+            "east": max(lngs) + padding,
+            "west": min(lngs) - padding
+        }
+
+        print(f"[BalancedPipeline] Evaluating route with {len(request.waypoints)} waypoints")
+        print(f"[BalancedPipeline] Route bounds: N={route_bounds['north']:.6f}, S={route_bounds['south']:.6f}")
+
+        self._report_progress("imagery", 15, "Fetching satellite imagery...")
+        await asyncio.sleep(0.05)
+
+        # Get satellite image
+        satellite_image, image_bounds = await self._get_satellite_image_fast(route_bounds)
+
+        if not satellite_image:
+            raise RuntimeError("Failed to fetch satellite imagery")
+
+        if not image_bounds:
+            image_bounds = route_bounds
+
+        self._report_progress("drawing", 30, "Drawing route on image...")
+        await asyncio.sleep(0.05)
+
+        # Convert waypoints to dict format for the generator
+        waypoints_dict = [{"lat": wp.lat, "lng": wp.lng} for wp in request.waypoints]
+
+        # Convert units to dict format
+        units_dict = {
+            "squad_size": request.units.squad_size,
+            "riflemen": request.units.riflemen,
+            "snipers": request.units.snipers,
+            "support": request.units.support,
+            "medics": request.units.medics
+        }
+
+        self._report_progress("analysis", 40, "AI analyzing route...")
+        await asyncio.sleep(0.05)
+
+        # Call Gemini to evaluate the route
+        result = await self.route_generator.evaluate_user_route(
+            satellite_image_base64=satellite_image,
+            waypoints=waypoints_dict,
+            units=units_dict,
+            bounds=image_bounds
+        )
+
+        self._report_progress("positions", 80, "Processing tactical positions...")
+        await asyncio.sleep(0.05)
+
+        # Calculate route distance
+        total_distance = 0.0
+        for i in range(len(request.waypoints) - 1):
+            wp1 = request.waypoints[i]
+            wp2 = request.waypoints[i + 1]
+            total_distance += self._haversine_distance(wp1.lat, wp1.lng, wp2.lat, wp2.lng)
+
+        # Estimate time (infantry moves ~60-80m/min with cover)
+        estimated_time_minutes = total_distance / 70
+
+        self._report_progress("complete", 95, "Building response...")
+        await asyncio.sleep(0.05)
+
+        # Convert positions to model format
+        positions = []
+        for pos in result.positions:
+            positions.append(SuggestedPosition(
+                position_type=pos.get('position_type', 'cover'),
+                lat=0.0,  # Positions are drawn on image, not extracted as coords
+                lng=0.0,
+                description=pos.get('description', ''),
+                for_unit=pos.get('for_unit'),
+                icon=pos.get('icon', 'map-pin')
+            ))
+
+        # Convert segment analysis to model format
+        segment_analysis = []
+        for i, seg in enumerate(result.segment_analysis):
+            # Calculate segment start/end from waypoints
+            if i < len(request.waypoints) - 1:
+                segment_analysis.append(SegmentAnalysis(
+                    segment_index=i,
+                    start_lat=request.waypoints[i].lat,
+                    start_lng=request.waypoints[i].lng,
+                    end_lat=request.waypoints[i + 1].lat,
+                    end_lng=request.waypoints[i + 1].lng,
+                    risk_level=seg.get('risk_level', 'medium'),
+                    description=seg.get('description', ''),
+                    suggestions=seg.get('suggestions', [])
+                ))
+
+        self._report_progress("complete", 100, "Evaluation complete!")
+
+        return RouteEvaluationResponse(
+            request_id=request_id,
+            timestamp=start_time,
+            annotated_image=result.annotated_image_base64,
+            annotated_image_bounds=result.adjusted_bounds or image_bounds,
+            positions=positions,
+            segment_analysis=segment_analysis,
+            overall_assessment=result.overall_assessment,
+            route_distance_m=total_distance,
+            estimated_time_minutes=estimated_time_minutes
+        )

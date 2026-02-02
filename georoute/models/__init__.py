@@ -12,6 +12,13 @@ from .tactical import (
     TacticalRoute,
     TacticalPlanRequest,
     TacticalPlanResponse,
+    # Route Evaluation models
+    UnitComposition,
+    RouteWaypoint,
+    SuggestedPosition,
+    SegmentAnalysis,
+    RouteEvaluationRequest,
+    RouteEvaluationResponse,
 )
 
 __all__ = [
@@ -26,4 +33,11 @@ __all__ = [
     "TacticalRoute",
     "TacticalPlanRequest",
     "TacticalPlanResponse",
+    # Route Evaluation models
+    "UnitComposition",
+    "RouteWaypoint",
+    "SuggestedPosition",
+    "SegmentAnalysis",
+    "RouteEvaluationRequest",
+    "RouteEvaluationResponse",
 ]

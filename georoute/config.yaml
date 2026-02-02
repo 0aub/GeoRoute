@@ -72,6 +72,53 @@ analysis_prompt: |
     "mission_summary": "2-3 sentence tactical summary"
   }}
 
+# Route Evaluation Prompt (for user-drawn route analysis)
+route_evaluation_prompt: |
+  Analyze this satellite image showing a user-planned infantry patrol route.
+  The BLUE DASHED LINE shows the proposed route from start to end.
+
+  Unit Composition:
+  - Squad size: {squad_size} soldiers
+  - Riflemen: {riflemen}
+  - Snipers: {snipers}
+  - Support/MG: {support}
+  - Medics: {medics}
+
+  YOUR TASK: Evaluate the route and mark optimal tactical positions on the image.
+
+  DRAW THESE MARKERS ON THE IMAGE:
+  1. GREEN CIRCLES (size 15px) - Cover positions where soldiers can take shelter
+  2. YELLOW TRIANGLES (size 20px) - Overwatch/sniper positions with good sightlines
+  3. ORANGE SQUARES (size 15px) - Rally points for regrouping
+  4. RED X MARKS (size 20px) - Danger zones that need caution (exposed areas, chokepoints)
+  5. WHITE CROSS with red outline (size 18px) - Suggested medic station position
+
+  IMPORTANT:
+  - Keep the original BLUE route line clearly visible
+  - Place markers NEAR the route, not on random locations
+  - Consider building shadows, walls, and vegetation for cover
+  - Snipers need elevated positions or long sightlines
+  - Rally points should be concealed but accessible
+  - Mark ALL exposed sections as danger zones
+
+  Also return this JSON analysis (as text after the image):
+  ```json
+  {{
+    "segments": [
+      {{"index": 0, "risk": "low", "description": "Good cover along wall", "suggestions": ["Stay close to building"]}},
+      {{"index": 1, "risk": "high", "description": "Open courtyard exposure", "suggestions": ["Move quickly", "Use smoke"]}}
+    ],
+    "positions": [
+      {{"type": "overwatch", "description": "Rooftop corner with view of courtyard", "for_unit": "sniper"}},
+      {{"type": "cover", "description": "Behind concrete barrier", "for_unit": "riflemen"}},
+      {{"type": "rally", "description": "Alley between buildings", "for_unit": "all"}},
+      {{"type": "danger", "description": "Wide open intersection", "for_unit": null}},
+      {{"type": "medic", "description": "Protected alcove near route midpoint", "for_unit": "medic"}}
+    ],
+    "overall": "Brief 2-3 sentence assessment of the route quality and main concerns"
+  }}
+  ```
+
 # Marker Settings
 markers:
   size: 6  # Smaller markers for cleaner route visualization

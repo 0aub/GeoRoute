@@ -172,3 +172,75 @@ class TacticalPlanResponse(BaseModel):
         default=None,
         description="Grid detection debug info - building_cells, traversable_cells, grid_cells for visualization"
     )
+
+
+# ============================================================================
+# Route Evaluation Models (User-drawn route analysis)
+# ============================================================================
+
+class UnitComposition(BaseModel):
+    """Unit composition for tactical evaluation."""
+    squad_size: int = Field(ge=2, le=12, description="Total squad size")
+    riflemen: int = Field(ge=0, default=0, description="Number of riflemen")
+    snipers: int = Field(ge=0, default=0, description="Number of snipers")
+    support: int = Field(ge=0, default=0, description="Number of support/MG units")
+    medics: int = Field(ge=0, default=0, description="Number of medics")
+
+
+class RouteWaypoint(BaseModel):
+    """A waypoint in a user-drawn route."""
+    lat: float
+    lng: float
+
+
+class SuggestedPosition(BaseModel):
+    """A suggested tactical position from AI evaluation."""
+    position_type: str = Field(description="overwatch, cover, rally, danger, medic")
+    lat: float
+    lng: float
+    description: str
+    for_unit: Optional[str] = Field(default=None, description="Recommended unit type for this position")
+    icon: str = Field(description="Icon name for frontend display")
+
+
+class SegmentAnalysis(BaseModel):
+    """Analysis of a route segment."""
+    segment_index: int
+    start_lat: float
+    start_lng: float
+    end_lat: float
+    end_lng: float
+    risk_level: str = Field(description="low, medium, high")
+    description: str
+    suggestions: list[str] = Field(default_factory=list)
+
+
+class RouteEvaluationRequest(BaseModel):
+    """Request to evaluate a user-drawn route."""
+    request_id: Optional[str] = Field(default=None, description="Client-provided request ID for progress tracking")
+    waypoints: list[RouteWaypoint] = Field(min_length=2, description="User-drawn route waypoints")
+    units: UnitComposition
+    bounds: dict = Field(description="Map bounds with north, south, east, west keys")
+
+
+class RouteEvaluationResponse(BaseModel):
+    """Response with route evaluation results."""
+    request_id: str
+    timestamp: datetime
+
+    # Annotated image
+    annotated_image: str = Field(description="Base64-encoded annotated satellite image")
+    annotated_image_bounds: dict = Field(description="Geographic bounds of the annotated image")
+
+    # Suggested positions
+    positions: list[SuggestedPosition] = Field(default_factory=list)
+
+    # Segment analysis
+    segment_analysis: list[SegmentAnalysis] = Field(default_factory=list)
+
+    # Overall assessment
+    overall_assessment: str
+
+    # Route metrics
+    route_distance_m: float
+    estimated_time_minutes: float
