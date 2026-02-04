@@ -1,163 +1,497 @@
-# GeoRoute - Military Tactical Route Planning
+<p align="center">
+  <img src="assets/logo.svg" alt="GeoRoute" height="80" />
+</p>
 
-GPU-accelerated tactical route planning system using SAM (Segment Anything Model) for obstacle detection and A* pathfinding for optimal route generation.
+<h1 align="center">GeoRoute</h1>
+
+<p align="center">
+  <strong>AI-Powered Tactical Route Planning System</strong>
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> &bull;
+  <a href="#quick-start">Quick Start</a> &bull;
+  <a href="#usage">Usage</a> &bull;
+  <a href="#architecture">Architecture</a> &bull;
+  <a href="#api-reference">API Reference</a> &bull;
+  <a href="#configuration">Configuration</a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.11-blue?logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/react-18-61dafb?logo=react&logoColor=white" alt="React" />
+  <img src="https://img.shields.io/badge/gemini-3_Pro-4285F4?logo=google&logoColor=white" alt="Gemini" />
+  <img src="https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker" />
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" />
+</p>
+
+---
+
+GeoRoute is a tactical route planning system that uses Google's Gemini AI to generate, evaluate, and simulate infantry movement routes on satellite imagery. It draws routes directly on real-world satellite maps, performs cover analysis against enemy positions, and produces detailed tactical reports with scoring and recommendations.
 
 ## Features
 
-- **SAM-Based Obstacle Detection**: Pixel-accurate building detection using Meta's Segment Anything Model
-- **GPU Acceleration**: CUDA-enabled inference for 1-2 second detection times
-- **A* Pathfinding**: High-resolution grid pathfinding avoiding obstacles
-- **Tactical Analysis**: AI-powered risk assessment via Gemini
-- **Real-time Visualization**: Interactive React UI with Leaflet maps
-- **Gulf Region Optimized**: Configured for GCC countries with appropriate terrain data
+### Route Generation
+- **AI-Drawn Routes** -- Gemini 3 Pro draws 2 tactical routes directly on satellite imagery (primary + stealth)
+- **Obstacle Avoidance** -- Routes curve around buildings, follow walls, and use natural cover
+- **Multi-Layer Scoring** -- Each route is scored on time-to-target, stealth, and survival probability
+- **Color-Coded Risk** -- Route segments are colored blue (safe) through red (critical) based on threat proximity
 
-## Architecture
+### Tactical Simulation
+- **Enemy Vision Cones** -- Place enemies (sniper, rifleman, observer) with realistic fields of view
+- **Cover Analysis** -- AI analyzes each route segment for cover status: exposed, covered, partial, or clear
+- **Flanking Detection** -- Mathematical calculation of approach angle relative to enemy facing direction
+- **Strategy Scoring** -- Multi-dimensional scores (stealth, safety, terrain usage, flanking) with verdict system
 
-```
-Satellite Imagery → SAM Detection → Obstacle Grid → A* Pathfinding → Tactical Routes
-                                                    ↓
-                                          Gemini Risk Analysis
-```
+### Route Evaluation
+- **Draw Your Own Route** -- Click waypoints on the map to plan custom movement paths
+- **AI Position Suggestions** -- Gemini recommends overwatch, cover, rally, danger, and medic positions
+- **Squad Composition** -- Configure riflemen, snipers, support gunners, and medics for tailored analysis
+- **Segment Risk Analysis** -- Each segment assessed for risk level with specific suggestions
+
+### Interactive Map
+- **ESRI Satellite Imagery** -- High-resolution satellite base map
+- **Drag-and-Drop Units** -- Place and reposition soldiers and enemies by clicking or dragging
+- **NATO APP-6 Symbols** -- Military-standard unit markers
+- **Gulf Region Optimized** -- Pre-configured for GCC countries (Saudi Arabia, UAE, Kuwait, Bahrain, Qatar, Oman)
+
+### Reports & History
+- **Comprehensive Reports** -- Verdict badge, radar scores, cover breakdown, flanking analysis, weak spots, recommendations
+- **Report History** -- All analyses saved and accessible from the history tab
+- **Real-Time Progress** -- Server-Sent Events stream stage updates during analysis
+
+---
 
 ## Quick Start
 
 ### Prerequisites
 
 - Docker & Docker Compose
-- NVIDIA GPU with 8GB+ VRAM (recommended)
 - API Keys:
-  - Google Maps API (satellite imagery)
-  - Gemini API (tactical analysis)
+  - [Google Maps API](https://console.cloud.google.com/apis/credentials) (Elevation API, Static API)
+  - [Gemini API](https://aistudio.google.com/app/apikey)
 
 ### Setup
 
-1. **Clone and configure**:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your API keys
-   ```
+```bash
+git clone https://github.com/0aub/GeoRoute.git
+cd GeoRoute
 
-2. **Build and run**:
-   ```bash
-   docker compose up --build
-   ```
+cp .env.example .env
+# Edit .env with your API keys
+```
 
-3. **Access**:
-   - UI: http://localhost:8080
-   - API: http://localhost:9001
+### Run
+
+```bash
+docker compose up --build
+```
+
+### Access
+
+| Service  | URL                     |
+|----------|-------------------------|
+| UI       | http://localhost:8080    |
+| API      | http://localhost:8001    |
+| Health   | http://localhost:8001/api/health |
+
+---
+
+## Usage
+
+### 1. AI Route Generation
+
+1. Click the map to place a **soldier** (blue) and an **enemy** (red)
+2. Click **Plan Tactical Attack**
+3. View generated routes with risk-colored segments, scores, and tactical analysis
+
+### 2. Manual Route Evaluation
+
+1. Switch to **Draw** mode
+2. Click waypoints on the map to draw your planned route
+3. Configure your squad composition (riflemen, snipers, support, medics)
+4. Click **Evaluate Route**
+5. View AI-suggested tactical positions and segment-by-segment risk analysis
+
+### 3. Tactical Simulation
+
+1. Switch to **Simulate** mode
+2. Place **enemies** with type (sniper/rifleman/observer) and facing direction
+3. Place **friendly** units
+4. Draw your movement route
+5. Click **Run Simulation**
+6. View vision cone analysis, cover status per segment, flanking bonus, and overall verdict
+
+### Map Controls
+
+| Action | How |
+|--------|-----|
+| Place unit | Select mode in sidebar, then click map |
+| Move unit | Drag the marker |
+| Remove unit | Right-click or use sidebar controls |
+| Draw route | Select draw mode, click waypoints |
+| Zoom requirement | Zoom level 17+ required for unit placement |
+
+---
+
+## Architecture
+
+```
+                         ┌─────────────────────────────┐
+                         │     React + Leaflet UI       │
+                         │   (Vite, Tailwind, Zustand)  │
+                         └──────────────┬───────────────┘
+                                        │ HTTP / SSE
+                         ┌──────────────▼───────────────┐
+                         │      FastAPI Backend          │
+                         │   balanced_tactical_pipeline  │
+                         └──┬──────────┬──────────┬─────┘
+                            │          │          │
+                  ┌─────────▼──┐  ┌────▼────┐  ┌──▼──────────┐
+                  │ Gemini 3   │  │  ESRI   │  │ Google Maps │
+                  │ Pro Image  │  │ Imagery │  │ Elevation   │
+                  │ + 3 Flash  │  │  Tiles  │  │    API      │
+                  └────────────┘  └─────────┘  └─────────────┘
+```
+
+**Pipeline Flow:**
+
+1. **Acquire Imagery** -- Fetch satellite tiles from ESRI and stitch into a single image
+2. **Generate/Annotate** -- Gemini draws routes or analyzes user-drawn routes on the image
+3. **Score & Classify** -- Multi-layer evaluation: risk scores, detection simulation, final verdict
+4. **Report** -- Structured JSON response with tactical analysis and annotated image
+
+### AI Models Used
+
+| Model | Purpose |
+|-------|---------|
+| `gemini-3-pro-image-preview` | Drawing routes on satellite images |
+| `gemini-2.5-flash` | Text-based analysis and scoring |
+| `gemini-3-flash-preview` | Vision-based tactical analysis (simulation & evaluation) |
+
+---
+
+## API Reference
+
+### POST `/api/plan-tactical-attack`
+
+Generate tactical routes between soldier and enemy positions.
+
+**Request:**
+```json
+{
+  "soldiers": [{ "lat": 24.7136, "lon": 46.6753 }],
+  "enemies": [{ "lat": 24.7146, "lon": 46.6763 }],
+  "bounds": { "north": 24.716, "south": 24.712, "east": 46.678, "west": 46.674 },
+  "zoom": 17,
+  "advanced_analytics": false
+}
+```
+
+**Response:** Routes with waypoints, risk-colored segments, scores, and optional AI tactical report.
+
+### POST `/api/evaluate-route`
+
+Evaluate a user-drawn route and suggest tactical positions.
+
+**Request:**
+```json
+{
+  "waypoints": [
+    { "lat": 24.7136, "lng": 46.6753 },
+    { "lat": 24.7140, "lng": 46.6758 }
+  ],
+  "unit_composition": { "squad_size": 8, "riflemen": 4, "snipers": 2, "support": 1, "medics": 1 },
+  "bounds": { "north": 24.716, "south": 24.712, "east": 46.678, "west": 46.674 },
+  "zoom": 17
+}
+```
+
+**Response:** Annotated image, suggested positions (overwatch, cover, rally, danger, medic), and segment risk analysis.
+
+### POST `/api/analyze-tactical-simulation`
+
+Analyze a tactical scenario with enemy vision cones and cover.
+
+**Request:**
+```json
+{
+  "enemies": [
+    { "lat": 24.7146, "lng": 46.6763, "type": "sniper", "facing": 180 }
+  ],
+  "friendlies": [
+    { "lat": 24.7136, "lng": 46.6753, "type": "rifleman" }
+  ],
+  "route_waypoints": [
+    { "lat": 24.7136, "lng": 46.6753 },
+    { "lat": 24.7140, "lng": 46.6758 }
+  ],
+  "bounds": { "north": 24.716, "south": 24.712, "east": 46.678, "west": 46.674 },
+  "zoom": 17
+}
+```
+
+**Response:**
+```json
+{
+  "annotated_image": "base64...",
+  "strategy_rating": 7.5,
+  "verdict": "GOOD",
+  "tactical_scores": { "stealth": 80, "safety": 75, "terrain_usage": 85, "flanking": 90, "overall": 82 },
+  "flanking_analysis": { "is_flanking": true, "approach_angle": 135, "bonus_awarded": 2.0, "description": "..." },
+  "segment_cover_analysis": [...],
+  "cover_breakdown": { "total_segments": 5, "exposed_count": 1, "covered_count": 3, "partial_count": 1, "clear_count": 0, "overall_cover_percentage": 80 },
+  "weak_spots": [...],
+  "strong_points": [...],
+  "recommendations": [...]
+}
+```
+
+### GET `/api/progress/{request_id}`
+
+Server-Sent Events stream for real-time progress during analysis.
+
+**Event format:**
+```json
+{ "stage": "imagery", "progress": 25, "message": "Acquiring satellite imagery..." }
+```
+
+Stages: `imagery` -> `routes`/`analysis` -> `report` -> `complete`
+
+### GET `/api/health`
+
+Health check endpoint.
+
+---
 
 ## Configuration
 
-Edit `georoute/config.yaml`:
+### Environment Variables (`.env`)
+
+```bash
+# Server
+BACKEND_PORT=8001          # Backend API port
+BACKEND_HOST=0.0.0.0       # Backend bind address
+UI_PORT=8080               # Frontend port
+CORS_ORIGINS=http://localhost:8080
+VITE_API_URL=http://localhost:8001
+
+# Google APIs (required)
+GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_MAPS_API_KEY=your-google-maps-api-key
+GEMINI_API_KEY=your-gemini-api-key
+```
+
+### Application Config (`georoute/config.yaml`)
 
 ```yaml
-# SAM Configuration
-sam:
-  model_type: "vit_h"  # vit_h (best), vit_l, or vit_b (fastest)
-  device: "cuda"       # cuda or cpu
-  min_area: 100        # Minimum pixel area for buildings
+# Route generation method and count
+route_generation:
+  method: "gemini_image"
+  num_routes: 2
 
-# Obstacle Detection Method
-obstacle_detection:
-  method: "sam"  # "sam" (GPU) or "gemini" (API fallback)
+# AI model selection
+gemini:
+  image_model: "gemini-3-pro-image-preview"
+  text_model: "gemini-2.5-flash"
+  analysis_model: "gemini-3-flash-preview"
+
+# Map marker appearance
+markers:
+  size: 6
+  start_color: [0, 100, 255]  # Blue
+  end_color: [255, 50, 50]    # Red
+
+# Geographic restriction (GCC bounding box)
+geo:
+  gcc_bounds:
+    north: 32.0
+    south: 12.0
+    east: 60.0
+    west: 34.0
 ```
+
+The config file also contains fully customizable AI prompts for route generation, tactical analysis, route evaluation, and tactical simulation.
+
+### Enemy Vision Specs
+
+| Type | Range | Angle | Threat Level |
+|------|-------|-------|--------------|
+| Sniper | 500m | 30° | High -- long-range precision |
+| Rifleman | 100m | 60° | Medium -- close-range, wider field |
+| Observer | 400m | 45° | Medium -- alerts other enemies |
+
+### Verdict Scoring
+
+| Verdict | Rating | Criteria |
+|---------|--------|----------|
+| EXCELLENT | 8.5 - 10 | 90%+ covered, rear flanking, zero exposed segments |
+| GOOD | 6.5 - 8.4 | 75%+ covered, good flanking, max 1 exposed segment |
+| ACCEPTABLE | 4.5 - 6.4 | 50-75% covered, some tactical thought |
+| RISKY | 0 - 4.4 | <50% covered or critical exposure or frontal approach |
+
+---
 
 ## Project Structure
 
 ```
 GeoRoute/
-├── georoute/              # Backend (FastAPI)
-│   ├── api/              # API endpoints
-│   ├── clients/          # External service clients
-│   ├── models/           # Pydantic models
-│   ├── processing/       # Core algorithms
-│   │   ├── sam_obstacle_detector.py      # SAM detection
-│   │   ├── balanced_tactical_pipeline.py # Main pipeline
-│   │   └── grid_pathfinder.py           # A* pathfinding
-│   └── config.yaml       # Configuration
-├── ui/                   # Frontend (React + TypeScript)
-│   └── src/
-│       ├── components/   # React components
-│       ├── pages/        # Page components
-│       └── types/        # TypeScript types
-├── docs/                 # Documentation
-├── tests/                # Test scripts
-└── assets/               # Images and logos
+├── georoute/                          # Backend (FastAPI + Python)
+│   ├── api/
+│   │   ├── routes.py                  # Health check endpoint
+│   │   └── tactical.py                # Plan, evaluate, simulate endpoints
+│   ├── clients/
+│   │   ├── esri_imagery.py            # Satellite tile fetching
+│   │   ├── gemini_tactical.py         # Gemini AI pipeline
+│   │   └── google_maps.py             # Elevation API
+│   ├── models/
+│   │   └── tactical.py                # Pydantic request/response models
+│   ├── processing/
+│   │   ├── balanced_tactical_pipeline.py   # Main orchestration pipeline
+│   │   └── gemini_image_route_generator.py # Route drawing & analysis
+│   ├── utils/
+│   │   └── geo_validator.py           # Gulf region coordinate validation
+│   ├── config.py                      # Config loader
+│   ├── config.yaml                    # All prompts, models, settings
+│   ├── main.py                        # App entry point
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── ui/                                # Frontend (React + TypeScript)
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── map/
+│   │   │   │   ├── TacticalMap.tsx     # Leaflet map with all overlays
+│   │   │   │   └── ZoomIndicator.tsx
+│   │   │   ├── sidebar/
+│   │   │   │   ├── Sidebar.tsx         # Main sidebar with mode tabs
+│   │   │   │   ├── UnitPlacement.tsx   # Soldier/enemy placement
+│   │   │   │   ├── ActionButtons.tsx   # Plan, evaluate, simulate actions
+│   │   │   │   ├── SimulationControls.tsx  # Enemy/friendly management
+│   │   │   │   ├── SimulationResults.tsx   # Report access button
+│   │   │   │   ├── RouteDrawingControls.tsx # Draw mode controls
+│   │   │   │   ├── UnitCompositionPanel.tsx # Squad editor
+│   │   │   │   ├── TacticalRouteResults.tsx # Generated route display
+│   │   │   │   ├── EvaluationResults.tsx    # Evaluation display
+│   │   │   │   └── AdvancedSettings.tsx
+│   │   │   ├── tactical/
+│   │   │   │   ├── TacticalReportModal.tsx  # Report viewer + history
+│   │   │   │   ├── PlanningLoader.tsx       # Progress overlay
+│   │   │   │   └── ScoreBar.tsx
+│   │   │   └── ui/                    # shadcn/ui component library
+│   │   ├── hooks/
+│   │   │   ├── useMission.ts          # Zustand global state store
+│   │   │   └── useApi.ts             # API calls + SSE progress
+│   │   ├── pages/
+│   │   │   └── Index.tsx              # Main application page
+│   │   └── types/
+│   │       └── index.ts              # TypeScript type definitions
+│   ├── Dockerfile
+│   └── nginx.conf
+│
+├── docs/                              # Additional documentation
+├── tests/                             # Integration tests
+├── assets/                            # Logo SVGs
+├── docker-compose.yml
+├── .env.example
+└── LICENSE                            # MIT
 ```
 
-## SAM vs Gemini Vision
+---
 
-| Feature | SAM (GPU) | Gemini Vision |
-|---------|-----------|---------------|
-| Accuracy | 75-85% IoU | ~68% |
-| Precision | Pixel-level | 1000×1000 grid (~1m) |
-| Speed | 1-2 seconds | 2-5 seconds |
-| Rate Limits | None | 5/min, 25/day |
-| Requirements | GPU (4GB+) | API key |
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Backend** | FastAPI, Python 3.11, Pydantic, Uvicorn |
+| **Frontend** | React 18, TypeScript, Vite, Tailwind CSS |
+| **State** | Zustand (client), TanStack Query (server) |
+| **Maps** | Leaflet + React-Leaflet, ESRI World Imagery |
+| **UI Components** | shadcn/ui (Radix UI primitives) |
+| **AI** | Google Gemini 3 Pro, Gemini 3 Flash, Gemini 2.5 Flash |
+| **Image Processing** | Pillow (Python) |
+| **Containers** | Docker Compose (Python 3.11-slim + Node 20-Alpine) |
+
+---
 
 ## Development
 
 ### Hot Reload
-Code changes are automatically reflected (no rebuild needed):
-- Backend: `georoute/` mounted as volume
-- Frontend: `ui/src/` mounted as volume
 
-### Testing
+Both services support hot reload without rebuilding containers:
+
+- **Backend**: `georoute/` is mounted as a read-only volume. Code changes are picked up by Uvicorn's `--reload` flag.
+- **Frontend**: `ui/src/` is mounted directly. Vite HMR reflects changes instantly.
+
+### Running Tests
+
 ```bash
-cd tests
-./test_routes_api.sh  # API integration tests
+# Backend integration tests
+cd tests && ./test_routes_api.sh
+
+# Frontend tests
+cd ui && npm test
 ```
 
-### GPU Check
+### Logs
+
 ```bash
-docker exec georoute-backend nvidia-smi
+# All services
+docker compose logs -f
+
+# Backend only
+docker logs -f georoute-backend
+
+# Frontend only
+docker logs -f georoute-ui
 ```
 
-## API Endpoints
+---
 
-### POST `/api/plan-tactical-attack`
-Plan tactical approach routes with obstacle avoidance.
+## Deployment
 
-**Request**:
-```json
-{
-  "soldiers": [{"lat": 25.0, "lon": 55.0}],
-  "enemies": [{"lat": 25.01, "lon": 55.01}],
-  "bounds": {"north": 25.02, "south": 24.98, "east": 55.02, "west": 54.98},
-  "zoom": 17
-}
+### AWS / Remote Server
+
+```bash
+git clone https://github.com/0aub/GeoRoute.git
+cd GeoRoute
+
+cp .env.example .env
+# Edit .env: set API keys, update CORS_ORIGINS and VITE_API_URL to your server IP/domain
+
+docker compose up --build -d
 ```
 
-**Response**: Multiple tactical routes with risk scores, waypoints, and AI analysis.
+Update `.env` for production:
+```bash
+CORS_ORIGINS=http://your-server-ip:8080
+VITE_API_URL=http://your-server-ip:8001
+```
 
-## Documentation
+### Updating
 
-- [SAM Research & Approach](docs/new%20research.md)
-- [Implementation Summary](docs/IMPLEMENTATION_SUMMARY.md)
-- [API Reference](docs/API_REFERENCE.md)
-- [Routing Investigation](docs/ROUTING_INVESTIGATION.md)
+```bash
+git pull origin main
+docker compose down && docker compose up --build -d
+```
+
+---
 
 ## Troubleshooting
 
-**Build Issues**:
-- Slow downloads: Using PyTorch base image (pre-built)
-- GPU not detected: Check `docker compose logs` and NVIDIA runtime
+| Problem | Solution |
+|---------|----------|
+| "Outside Gulf Region" error | System is restricted to GCC countries. Ensure coordinates are within bounds. |
+| "Zoom In Required" popup | Zoom to level 17+ before placing units. |
+| No routes generated | Check Gemini API key is valid and has quota. Check backend logs. |
+| Blank satellite imagery | Verify Google Maps API key has Static Maps API enabled. |
+| Container won't start | Run `docker compose logs` to see error details. |
+| Port already in use | Change `BACKEND_PORT` or `UI_PORT` in `.env`. |
 
-**SAM Errors**:
-- Falls back to Gemini Vision automatically
-- Check logs: `docker logs georoute-backend`
-
-**Out of Memory**:
-- Reduce `sam.model_type` from `vit_h` to `vit_b` in config.yaml
-- Or set `sam.device: "cpu"` (slower but no GPU required)
+---
 
 ## License
 
+MIT License - Copyright (c) 2026 Ayyub Alzahem
+
 See [LICENSE](LICENSE) for details.
-
-## Credits
-
-- **SAM**: Meta AI - [Segment Anything](https://github.com/facebookresearch/segment-anything)
-- **segment-geospatial**: Geospatial wrapper for SAM
-- **FastAPI**: Modern Python web framework
-- **React + Leaflet**: Interactive mapping UI
