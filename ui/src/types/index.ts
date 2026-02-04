@@ -14,7 +14,7 @@ export interface Bounds {
   west: number;
 }
 
-export type MapMode = 'idle' | 'place-soldier' | 'place-enemy' | 'draw-route';
+export type MapMode = 'idle' | 'place-soldier' | 'place-enemy' | 'draw-route' | 'place-sim-enemy' | 'place-sim-friendly';
 
 export interface NoGoZone {
   id: string;

@@ -11,11 +11,18 @@ route_generation:
 # Gemini AI Models
 gemini:
   image_model: "gemini-3-pro-image-preview"  # For drawing routes on satellite images (Nano Banana Pro)
-  text_model: "gemini-2.5-flash"   # For analysis and reports
+  text_model: "gemini-2.5-flash"             # For basic text generation
+  analysis_model: "gemini-3-flash-preview"   # For tactical analysis with vision (Gemini 3 Flash)
 
 # Route Generation Prompt
 route_prompt: |
   Edit this satellite image. Draw exactly 2 infantry foot patrol routes from BLUE marker to RED marker.
+
+  ROUTE CONNECTION:
+  - Each route must START at the BLUE circle and END at the RED circle
+  - Routes CONNECT these two points - they are PATHS, not area outlines
+  - Do NOT draw any part of a route beyond the RED target marker
+  - Do NOT draw any part before the BLUE start marker
 
   DRAWING RULES:
   - Draw smooth, curved lines that follow natural walking paths
@@ -38,7 +45,7 @@ route_prompt: |
   CRITICAL:
   - Routes must NEVER pass through any building or structure
   - Draw natural curved paths, not straight lines or sharp angles
-  - Each route is ONE continuous line only - no branches or loops
+  - Each route is ONE continuous line only - no branches, loops, or extensions past the markers
   
     
 # Tactical Analysis Prompt (for advanced analytics)
@@ -118,6 +125,146 @@ route_evaluation_prompt: |
     "overall": "Brief 2-3 sentence assessment of the route quality and main concerns"
   }}
   ```
+
+# Tactical Simulation Prompt (for Draw mode with enemy vision cones)
+tactical_simulation_prompt: |
+  Analyze this tactical scenario satellite image with the following elements:
+
+  MARKED ON IMAGE:
+  - BLUE DASHED LINE: Friendly unit movement route (numbered segments 0, 1, 2...)
+  - BLUE SQUARE MARKERS: Friendly unit starting positions
+  - RED CONE SHAPES: Enemy fields of view (vision cones)
+    - Snipers: 500m range, 30° angle - MOST DANGEROUS, long range precision
+    - Riflemen: 100m range, 60° angle - Close-medium range, wider field
+    - Observers: 400m range, 45° angle - Will alert other enemies
+
+  FRIENDLY FORCES: {num_friendlies} units
+  {friendly_composition}
+
+  ENEMY FORCES: {num_enemies} units
+  {enemy_composition}
+
+  CRITICAL ANALYSIS RULES:
+  1. Buildings BLOCK enemy vision - routes BEHIND buildings are SAFE even if in cone angle
+  2. Trees/vegetation provide PARTIAL cover (50% concealment)
+  3. Only mark as EXPOSED if in cone AND no obstacles blocking line-of-sight
+  4. Approaching from enemy's BACK (>90° from facing) = FLANKING BONUS
+
+  YOUR TASK:
+  1. For EACH route segment, analyze if it has COVER blocking enemy LOS
+  2. Calculate FLANKING BONUS if approaching from enemy blind spot
+  3. Score the tactical approach across multiple dimensions
+  4. Provide a VERDICT rating the overall strategy
+  5. Mark weak spots RED and strong points GREEN on the image
+
+  Return analysis as JSON (MUST include all fields):
+  ```json
+  {{
+    "verdict": "EXCELLENT",
+    "strategy_rating": 8.5,
+    "tactical_scores": {{
+      "stealth": 85,
+      "safety": 75,
+      "terrain_usage": 90,
+      "flanking": 95,
+      "overall": 86
+    }},
+    "flanking_analysis": {{
+      "is_flanking": true,
+      "approach_angle": 135,
+      "bonus_awarded": 2.5,
+      "description": "Approaching from southeast, enemy facing north - excellent blind spot exploitation"
+    }},
+    "segment_cover_analysis": [
+      {{
+        "segment_index": 0,
+        "in_vision_cone": false,
+        "cover_status": "clear",
+        "cover_type": null,
+        "exposure_percentage": 0,
+        "blocking_feature": null,
+        "enemy_id": null,
+        "explanation": "Segment outside all enemy vision cones"
+      }},
+      {{
+        "segment_index": 1,
+        "in_vision_cone": true,
+        "cover_status": "covered",
+        "cover_type": "building",
+        "exposure_percentage": 0,
+        "blocking_feature": "2-story concrete building",
+        "enemy_id": "sniper_1",
+        "explanation": "In sniper cone but building blocks line-of-sight completely"
+      }},
+      {{
+        "segment_index": 2,
+        "in_vision_cone": true,
+        "cover_status": "exposed",
+        "cover_type": "none",
+        "exposure_percentage": 80,
+        "blocking_feature": null,
+        "enemy_id": "rifleman_1",
+        "explanation": "Open ground crossing with no cover - DANGER"
+      }}
+    ],
+    "cover_breakdown": {{
+      "total_segments": 5,
+      "exposed_count": 1,
+      "covered_count": 3,
+      "partial_count": 0,
+      "clear_count": 1,
+      "overall_cover_percentage": 80,
+      "cover_types_used": ["building", "vegetation"]
+    }},
+    "weak_spots": [
+      {{
+        "location": "Segment 2",
+        "description": "Open ground crossing in rifleman's field of fire",
+        "severity": "high",
+        "recommendation": "Deploy smoke or time movement when enemy looks away"
+      }}
+    ],
+    "strong_points": [
+      {{
+        "location": "Segments 1, 3-4",
+        "description": "Excellent use of building cover throughout approach",
+        "benefit": "Completely hidden from sniper despite being in cone range"
+      }}
+    ],
+    "terrain_assessment": "Route cleverly uses urban terrain with 80% of approach behind hard cover",
+    "overall_assessment": "Excellent tactical approach exploiting enemy blind spots and urban cover. Only segment 2 requires caution.",
+    "recommendations": [
+      "Use smoke at segment 2 crossing",
+      "Maintain current flanking approach angle",
+      "Consider sniper overwatch from building corner before crossing"
+    ]
+  }}
+  ```
+
+  STRICT SCORING RULES (Be Critical - Default to LOWER scores):
+
+  AUTOMATIC DEDUCTIONS (subtract from base score of 5):
+  - ANY exposed segment in sniper cone: -2.0 points
+  - ANY exposed segment in rifleman cone: -1.5 points
+  - Route crosses open ground >30m: -1.0 points per crossing
+  - No flanking angle (<60° from enemy facing): -1.5 points
+  - Multiple enemies covering same segment: -1.0 points
+  - Route is too direct/obvious: -1.0 points
+
+  BONUSES (add to score):
+  - True flanking (>120° from enemy): +1.5 points
+  - Rear attack (>150° from enemy): +2.5 points
+  - 90%+ segments have building cover: +1.0 points
+  - Route uses terrain creatively: +0.5 points
+
+  VERDICT THRESHOLDS (Strict):
+  - EXCELLENT (8.5-10): 90%+ covered, rear flanking, zero exposed segments
+  - GOOD (6.5-8.4): 75%+ covered, good flanking, max 1 exposed segment
+  - ACCEPTABLE (4.5-6.4): 50-75% covered, some tactical thought
+  - RISKY (0-4.4): <50% covered OR any critical exposure OR frontal approach
+
+  IMPORTANT: Most routes should score 4-7. Only truly exceptional routes score 8+.
+  A score of 7.5+ requires near-perfect cover AND flanking advantage.
 
 # Marker Settings
 markers:

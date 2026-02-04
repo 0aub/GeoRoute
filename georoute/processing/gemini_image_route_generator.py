@@ -10,6 +10,7 @@ Configuration is loaded from config.yaml - modify prompts there.
 
 import base64
 import io
+import re
 from typing import Optional, Tuple
 from dataclasses import dataclass
 from PIL import Image, ImageDraw
@@ -567,6 +568,137 @@ Mark tactical positions on the image and provide analysis.
             overall_assessment=overall_assessment,
             adjusted_bounds=adjusted_bounds
         )
+
+    async def analyze_tactical_simulation(
+        self,
+        annotated_image_base64: str,
+        prompt: str
+    ) -> dict:
+        """
+        Analyze a tactical simulation using Gemini 3 Flash.
+
+        Args:
+            annotated_image_base64: Pre-annotated image with vision cones and route
+            prompt: Analysis prompt with context
+
+        Returns:
+            Dictionary with analysis results including weak spots and recommendations
+        """
+        import json as json_lib
+
+        # Decode image for Gemini
+        image_data = base64.b64decode(annotated_image_base64)
+        image = Image.open(io.BytesIO(image_data))
+
+        print(f"[GeminiImageRoute] Analyzing tactical simulation with Gemini 3 Flash...")
+
+        # Get analysis model from config
+        analysis_model = get_yaml_setting("gemini", "analysis_model", default="gemini-3-flash-preview")
+
+        try:
+            # Use Gemini 3 Flash for tactical analysis with vision
+            # Only request TEXT - no image generation (not available in all regions)
+            response = self.client.models.generate_content(
+                model=analysis_model,
+                contents=[prompt, image],
+                config=types.GenerateContentConfig(
+                    response_modalities=['TEXT'],
+                    temperature=0.3,
+                    candidate_count=1,
+                )
+            )
+
+            print(f"[GeminiImageRoute] Simulation analysis response received")
+
+            # Extract image and text from response
+            result_image_data = None
+            response_text = ""
+
+            for part in response.candidates[0].content.parts:
+                if part.inline_data is not None:
+                    result_image_data = part.inline_data.data
+                    print(f"[GeminiImageRoute] Got annotated result image: {len(result_image_data)} bytes")
+                elif hasattr(part, 'text') and part.text:
+                    response_text += part.text
+
+            # Process result image if Gemini annotated it
+            result_image_base64 = annotated_image_base64  # Default to input
+            if result_image_data:
+                result_image = Image.open(io.BytesIO(result_image_data))
+                buffer = io.BytesIO()
+                result_image.save(buffer, format='PNG', optimize=False)
+                result_image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+            # Parse JSON analysis from response text
+            result = {
+                'annotated_image': result_image_base64,
+                'strategy_rating': 5.0,
+                'verdict': None,
+                'tactical_scores': None,
+                'flanking_analysis': None,
+                'segment_cover_analysis': [],
+                'cover_breakdown': None,
+                'weak_spots': [],
+                'strong_points': [],
+                'exposure_analysis': [],
+                'terrain_assessment': '',
+                'overall_assessment': 'Analysis complete.',
+                'recommendations': []
+            }
+
+            try:
+                # Find JSON in response text
+                json_match = re.search(r'\{[\s\S]*\}', response_text)
+                if json_match:
+                    analysis = json_lib.loads(json_match.group())
+
+                    # Log what Gemini actually returned
+                    print(f"[GeminiImageRoute] Gemini returned keys: {list(analysis.keys())}")
+
+                    # Extract ALL fields from Gemini response
+                    result['strategy_rating'] = float(analysis.get('strategy_rating', 5.0))
+                    result['verdict'] = analysis.get('verdict')
+                    result['tactical_scores'] = analysis.get('tactical_scores')
+                    result['flanking_analysis'] = analysis.get('flanking_analysis')
+                    result['segment_cover_analysis'] = analysis.get('segment_cover_analysis', [])
+                    result['cover_breakdown'] = analysis.get('cover_breakdown')
+                    result['weak_spots'] = analysis.get('weak_spots', [])
+                    result['strong_points'] = analysis.get('strong_points', [])
+                    result['exposure_analysis'] = analysis.get('exposure_analysis', [])
+                    result['terrain_assessment'] = analysis.get('terrain_assessment', '')
+                    result['overall_assessment'] = analysis.get('overall_assessment', 'Analysis complete.')
+                    result['recommendations'] = analysis.get('recommendations', [])
+
+                    # Log detailed parsing results
+                    print(f"[GeminiImageRoute] Parsed: rating={result['strategy_rating']}, verdict={result['verdict']}")
+                    print(f"[GeminiImageRoute] tactical_scores present: {result['tactical_scores'] is not None}")
+                    print(f"[GeminiImageRoute] flanking_analysis present: {result['flanking_analysis'] is not None}")
+                    print(f"[GeminiImageRoute] segment_cover_analysis count: {len(result['segment_cover_analysis'])}")
+                    print(f"[GeminiImageRoute] cover_breakdown present: {result['cover_breakdown'] is not None}")
+                    print(f"[GeminiImageRoute] weak_spots: {len(result['weak_spots'])}, strong_points: {len(result['strong_points'])}")
+                else:
+                    print(f"[GeminiImageRoute] No JSON found in response. Response text (first 500 chars): {response_text[:500]}")
+
+            except json_lib.JSONDecodeError as e:
+                print(f"[GeminiImageRoute] Could not parse JSON analysis: {e}")
+                print(f"[GeminiImageRoute] Raw response (first 500 chars): {response_text[:500]}")
+                # Use response text as assessment if JSON parsing fails
+                if response_text:
+                    result['overall_assessment'] = response_text[:1000]
+
+            return result
+
+        except Exception as e:
+            print(f"[GeminiImageRoute] Tactical simulation analysis failed: {e}")
+            # Return basic result with error
+            return {
+                'annotated_image': annotated_image_base64,
+                'strategy_rating': 5.0,
+                'weak_spots': [],
+                'exposure_analysis': [],
+                'overall_assessment': f'Analysis encountered an issue: {str(e)}',
+                'recommendations': ['Review the route manually', 'Consider alternative approaches']
+            }
 
     def _get_position_icon(self, position_type: str) -> str:
         """Get icon name for position type."""

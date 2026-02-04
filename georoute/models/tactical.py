@@ -1,7 +1,7 @@
 """Tactical military planning models."""
 
 from enum import Enum
-from typing import Optional
+from typing import Optional, Literal
 from pydantic import BaseModel, Field
 from datetime import datetime
 
@@ -240,6 +240,157 @@ class RouteEvaluationResponse(BaseModel):
 
     # Overall assessment
     overall_assessment: str
+
+    # Route metrics
+    route_distance_m: float
+    estimated_time_minutes: float
+
+
+# ============================================================================
+# Tactical Simulation Models (Vision cone analysis)
+# ============================================================================
+
+class SimEnemyType(str, Enum):
+    """Types of enemy units in simulation."""
+    SNIPER = "sniper"
+    RIFLEMAN = "rifleman"
+    OBSERVER = "observer"
+
+
+class SimFriendlyType(str, Enum):
+    """Types of friendly units in simulation."""
+    RIFLEMAN = "rifleman"
+    SNIPER = "sniper"
+    MEDIC = "medic"
+
+
+class SimEnemyUnit(BaseModel):
+    """Enemy unit in tactical simulation with vision cone."""
+    id: str
+    type: SimEnemyType
+    lat: float
+    lng: float
+    facing: float = Field(ge=0, lt=360, description="Facing direction in degrees (0=North)")
+
+
+class SimFriendlyUnit(BaseModel):
+    """Friendly unit in tactical simulation."""
+    id: str
+    type: SimFriendlyType
+    lat: float
+    lng: float
+
+
+class WeakSpot(BaseModel):
+    """A weak spot identified in the tactical plan."""
+    location: str = Field(description="Description of where this weak spot is")
+    description: str = Field(description="What makes this a weak spot")
+    severity: str = Field(description="low, medium, high, critical")
+    recommendation: str = Field(description="How to mitigate this weakness")
+
+
+class StrongPoint(BaseModel):
+    """A strong point where route uses terrain effectively."""
+    location: str = Field(description="Description of where this strong point is")
+    description: str = Field(description="What makes this position advantageous")
+    benefit: str = Field(description="Tactical benefit of this position")
+
+
+class ExposureAnalysis(BaseModel):
+    """Analysis of route exposure to enemy vision."""
+    segment_index: int
+    enemy_id: str
+    exposure_percentage: float = Field(ge=0, le=100)
+    description: str
+
+
+class SegmentCoverAnalysis(BaseModel):
+    """Detailed cover analysis for a single route segment."""
+    segment_index: int
+    in_vision_cone: bool = Field(description="Is segment geometrically in enemy vision cone?")
+    cover_status: Literal["exposed", "covered", "partial", "clear"] = Field(
+        description="exposed=in cone no cover, covered=in cone with cover, partial=some cover, clear=not in cone"
+    )
+    cover_type: Optional[str] = Field(default=None, description="building, vegetation, terrain, or none")
+    exposure_percentage: float = Field(ge=0, le=100, default=0)
+    blocking_feature: Optional[str] = Field(default=None, description="What blocks LOS")
+    enemy_id: Optional[str] = Field(default=None, description="Which enemy this analysis is for")
+    explanation: str = Field(default="", description="Human-readable explanation")
+
+
+class TacticalScores(BaseModel):
+    """Multi-dimensional tactical scoring (0-100 each)."""
+    stealth: float = Field(ge=0, le=100, description="How hidden is the approach")
+    safety: float = Field(ge=0, le=100, description="Survival probability")
+    terrain_usage: float = Field(ge=0, le=100, description="How well route uses available cover")
+    flanking: float = Field(ge=0, le=100, description="Tactical advantage from approach angle")
+    overall: float = Field(ge=0, le=100, description="Weighted composite score")
+
+
+class FlankingAnalysis(BaseModel):
+    """Analysis of flanking maneuver effectiveness."""
+    is_flanking: bool = Field(description="Is route approaching from enemy blind spot?")
+    approach_angle: float = Field(ge=0, lt=360, description="Angle from enemy facing direction")
+    bonus_awarded: float = Field(ge=0, le=3, description="Rating bonus (0-3 points)")
+    description: str = Field(description="Explanation of flanking analysis")
+
+
+class CoverBreakdown(BaseModel):
+    """Summary breakdown of cover along the route."""
+    total_segments: int
+    exposed_count: int = Field(ge=0, description="Segments with no cover in enemy cone")
+    covered_count: int = Field(ge=0, description="Segments with hard cover in enemy cone")
+    partial_count: int = Field(ge=0, description="Segments with partial cover")
+    clear_count: int = Field(ge=0, description="Segments outside all enemy cones")
+    overall_cover_percentage: float = Field(ge=0, le=100, description="% of route that is covered/clear")
+    cover_types_used: list[str] = Field(default_factory=list, description="Types of cover used")
+
+
+class TacticalSimulationRequest(BaseModel):
+    """Request to analyze a tactical simulation scenario."""
+    request_id: Optional[str] = Field(default=None, description="Client-provided request ID for progress tracking")
+    enemies: list[SimEnemyUnit] = Field(min_length=1, description="Enemy units with vision cones")
+    friendlies: list[SimFriendlyUnit] = Field(default_factory=list, description="Friendly units")
+    route_waypoints: list[RouteWaypoint] = Field(min_length=2, description="Movement route waypoints")
+    bounds: dict = Field(description="Map bounds with north, south, east, west keys")
+
+
+class TacticalSimulationResponse(BaseModel):
+    """Response with tactical simulation analysis."""
+    request_id: str
+    timestamp: datetime
+
+    # Annotated image with weak spots marked
+    annotated_image: str = Field(description="Base64-encoded annotated satellite image")
+    annotated_image_bounds: dict = Field(description="Geographic bounds of the annotated image")
+
+    # Strategy rating and verdict
+    strategy_rating: float = Field(ge=0, le=10, description="Overall strategy rating 0-10")
+    verdict: Optional[str] = Field(default=None, description="EXCELLENT, GOOD, ACCEPTABLE, or RISKY")
+
+    # Enhanced tactical analysis (new)
+    tactical_scores: Optional[TacticalScores] = Field(default=None, description="Multi-dimensional scoring")
+    flanking_analysis: Optional[FlankingAnalysis] = Field(default=None, description="Flanking maneuver analysis")
+    segment_cover_analysis: list[SegmentCoverAnalysis] = Field(default_factory=list, description="Per-segment cover analysis")
+    cover_breakdown: Optional[CoverBreakdown] = Field(default=None, description="Summary of cover usage")
+
+    # Weak spots identified
+    weak_spots: list[WeakSpot] = Field(default_factory=list)
+
+    # Strong points (good use of terrain/cover)
+    strong_points: list[StrongPoint] = Field(default_factory=list)
+
+    # Exposure analysis (legacy, kept for compatibility)
+    exposure_analysis: list[ExposureAnalysis] = Field(default_factory=list)
+
+    # Terrain assessment
+    terrain_assessment: str = Field(default="", description="Analysis of terrain usage")
+
+    # Overall assessment
+    overall_assessment: str
+
+    # Recommendations
+    recommendations: list[str] = Field(default_factory=list)
 
     # Route metrics
     route_distance_m: float

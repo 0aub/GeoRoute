@@ -10,6 +10,9 @@ import type {
   DrawnWaypoint,
   UnitComposition,
   RouteEvaluationResult,
+  SimEnemy,
+  SimFriendly,
+  TacticalSimulationResult,
 } from './useMission';
 
 const apiUrl = getApiUrl();
@@ -129,4 +132,37 @@ export const subscribeToProgress = (
   return () => {
     eventSource.close();
   };
+};
+
+// ============================================================================
+// Tactical Simulation API
+// ============================================================================
+
+export interface TacticalSimulationRequest {
+  request_id?: string;
+  enemies: Array<{
+    id: string;
+    type: string;
+    lat: number;
+    lng: number;
+    facing: number;
+  }>;
+  friendlies: Array<{
+    id: string;
+    type: string;
+    lat: number;
+    lng: number;
+  }>;
+  route_waypoints: DrawnWaypoint[];
+  bounds: Bounds;
+}
+
+export const useAnalyzeTacticalSimulation = () => {
+  return useMutation<TacticalSimulationResult, Error, TacticalSimulationRequest>({
+    mutationFn: (request) =>
+      fetchWithError('/api/analyze-tactical-simulation', {
+        method: 'POST',
+        body: JSON.stringify(request),
+      }),
+  });
 };

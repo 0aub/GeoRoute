@@ -8,7 +8,7 @@ import { isConfigured } from '@/config/env';
 import { useMission } from '@/hooks/useMission';
 import {
   usePlanTacticalAttack,
-  useEvaluateRoute,
+  useAnalyzeTacticalSimulation,
   useHealth,
   subscribeToProgress,
   type ProgressUpdate,
@@ -30,17 +30,19 @@ const RoutePlanner = () => {
     setTacticalRoutes,
     currentZoom,
     advancedAnalytics,
-    // Route evaluation
+    // Tactical simulation
     drawnWaypoints,
-    unitComposition,
-    setRouteEvaluation,
+    simEnemies,
+    simFriendlies,
+    setSimulationResult,
     setIsEvaluating,
     isEvaluating,
+    setReportModalOpen,
   } = useMission();
 
   const { data: health, isError } = useHealth();
   const planTacticalAttack = usePlanTacticalAttack();
-  const evaluateRoute = useEvaluateRoute();
+  const analyzeTacticalSimulation = useAnalyzeTacticalSimulation();
 
   // Update connection status based on health check
   useEffect(() => {
@@ -173,12 +175,21 @@ const RoutePlanner = () => {
     }
   };
 
-  // Handle route evaluation (manual draw mode)
+  // Handle tactical simulation analysis (manual draw mode)
   const handleEvaluateRoute = async () => {
     if (drawnWaypoints.length < 2) {
       toast({
         title: 'Insufficient Waypoints',
-        description: 'Please draw at least 2 waypoints to evaluate a route.',
+        description: 'Please draw at least 2 waypoints for the movement route.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (simEnemies.length === 0) {
+      toast({
+        title: 'No Enemies',
+        description: 'Please place at least one enemy unit with a vision cone.',
         variant: 'destructive',
       });
       return;
@@ -197,50 +208,68 @@ const RoutePlanner = () => {
         setProgress(update);
       },
       (error) => {
-        console.error('[RouteEvaluation] Progress stream error:', error);
+        console.error('[TacticalSimulation] Progress stream error:', error);
       }
     );
 
     try {
-      // Calculate bounds from waypoints
-      const lats = drawnWaypoints.map((wp) => wp.lat);
-      const lngs = drawnWaypoints.map((wp) => wp.lng);
-      const padding = 0.002; // ~200m padding
+      // Calculate bounds from all elements (enemies, friendlies, route)
+      const allLats = [
+        ...drawnWaypoints.map((wp) => wp.lat),
+        ...simEnemies.map((e) => e.lat),
+        ...simFriendlies.map((f) => f.lat),
+      ];
+      const allLngs = [
+        ...drawnWaypoints.map((wp) => wp.lng),
+        ...simEnemies.map((e) => e.lng),
+        ...simFriendlies.map((f) => f.lng),
+      ];
+
+      // Calculate proportional padding: 15% of span + 50m minimum
+      const latSpan = Math.max(...allLats) - Math.min(...allLats);
+      const lngSpan = Math.max(...allLngs) - Math.min(...allLngs);
+      const minPadding = 0.0005; // ~50m minimum
+      const paddingLat = Math.max(minPadding, latSpan * 0.15);
+      const paddingLng = Math.max(minPadding, lngSpan * 0.15);
 
       const bounds: Bounds = {
-        north: Math.max(...lats) + padding,
-        south: Math.min(...lats) - padding,
-        east: Math.max(...lngs) + padding,
-        west: Math.min(...lngs) - padding,
+        north: Math.max(...allLats) + paddingLat,
+        south: Math.min(...allLats) - paddingLat,
+        east: Math.max(...allLngs) + paddingLng,
+        west: Math.min(...allLngs) - paddingLng,
       };
 
-      const result = await evaluateRoute.mutateAsync({
+      const result = await analyzeTacticalSimulation.mutateAsync({
         request_id: requestId,
-        waypoints: drawnWaypoints,
-        units: {
-          squad_size: unitComposition.squadSize,
-          riflemen: unitComposition.riflemen,
-          snipers: unitComposition.snipers,
-          support: unitComposition.support,
-          medics: unitComposition.medics,
-        },
+        enemies: simEnemies.map((e) => ({
+          id: e.id,
+          type: e.type,
+          lat: e.lat,
+          lng: e.lng,
+          facing: e.facing,
+        })),
+        friendlies: simFriendlies.map((f) => ({
+          id: f.id,
+          type: f.type,
+          lat: f.lat,
+          lng: f.lng,
+        })),
+        route_waypoints: drawnWaypoints,
         bounds,
       });
 
       if (result) {
-        setRouteEvaluation(result);
-        toast({
-          title: 'Route Evaluated',
-          description: `Found ${result.positions.length} tactical positions. Check the sidebar for details.`,
-        });
+        setSimulationResult(result);
+        // Auto-open the report modal
+        setReportModalOpen(true);
       } else {
         throw new Error('Invalid response format from server');
       }
     } catch (error: any) {
-      console.error('[RouteEvaluation] Error:', error);
+      console.error('[TacticalSimulation] Error:', error);
       toast({
-        title: 'Evaluation Failed',
-        description: error.message || 'Failed to evaluate route. Please try again.',
+        title: 'Analysis Failed',
+        description: error.message || 'Failed to analyze tactical scenario. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -274,7 +303,7 @@ const RoutePlanner = () => {
       </div>
 
       {/* Loading Animation - Full Screen Overlay with REAL progress */}
-      {(isPlanning || isEvaluating) && <PlanningLoader progress={progress} advancedAnalytics={advancedAnalytics} />}
+      {(isPlanning || isEvaluating) && <PlanningLoader progress={progress} advancedAnalytics={advancedAnalytics} isSimulation={isEvaluating} />}
     </div>
   );
 };

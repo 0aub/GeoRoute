@@ -9,10 +9,17 @@ interface LoadingStage {
   icon: React.ElementType;
 }
 
-// 3 main stages visible during the process
+// 3 main stages visible during route planning
 const STAGES: LoadingStage[] = [
   { id: 'imagery', label: 'Acquiring Imagery', icon: Satellite },
   { id: 'routes', label: 'Planning Routes', icon: Route },
+  { id: 'report', label: 'Generating Report', icon: FileText },
+];
+
+// Stages for tactical simulation (report generation)
+const SIMULATION_STAGES: LoadingStage[] = [
+  { id: 'imagery', label: 'Acquiring Imagery', icon: Satellite },
+  { id: 'analysis', label: 'Analyzing Scenario', icon: Shield },
   { id: 'report', label: 'Generating Report', icon: FileText },
 ];
 
@@ -31,13 +38,16 @@ const STAGE_MAP: Record<string, number> = {
 interface PlanningLoaderProps {
   progress: ProgressUpdate | null;
   advancedAnalytics?: boolean;
+  isSimulation?: boolean;
 }
 
-export const PlanningLoader = ({ progress, advancedAnalytics = false }: PlanningLoaderProps) => {
+export const PlanningLoader = ({ progress, advancedAnalytics = false, isSimulation = false }: PlanningLoaderProps) => {
+  // Pick stage set based on mode
+  const baseStages = isSimulation ? SIMULATION_STAGES : STAGES;
   // Determine which stages to show based on advanced analytics
-  const visibleStages = advancedAnalytics
-    ? STAGES
-    : STAGES.filter(s => s.id !== 'report');
+  const visibleStages = advancedAnalytics || isSimulation
+    ? baseStages
+    : baseStages.filter(s => s.id !== 'report');
   const [pulseRing, setPulseRing] = useState(0);
 
   // Pulsing ring animation

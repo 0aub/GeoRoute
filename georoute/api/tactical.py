@@ -14,6 +14,8 @@ from ..models.tactical import (
     TacticalPlanResponse,
     RouteEvaluationRequest,
     RouteEvaluationResponse,
+    TacticalSimulationRequest,
+    TacticalSimulationResponse,
 )
 from ..processing.balanced_tactical_pipeline import BalancedTacticalPipeline
 from ..config import load_config
@@ -155,3 +157,37 @@ async def evaluate_route(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Route evaluation failed: {str(e)}")
+
+
+@router.post("/analyze-tactical-simulation", response_model=TacticalSimulationResponse)
+async def analyze_tactical_simulation(
+    request: TacticalSimulationRequest,
+    pipeline: Annotated[BalancedTacticalPipeline, Depends(get_tactical_pipeline)],
+) -> TacticalSimulationResponse:
+    """
+    Analyze a tactical simulation with enemy vision cones and movement routes.
+
+    Process:
+    1. Fetch satellite imagery for the simulation bounds
+    2. Draw enemy vision cones and movement route on the image
+    3. Send to Gemini 3 Flash for tactical analysis
+    4. Identify weak spots where route crosses enemy vision
+    5. Return annotated image with analysis and recommendations
+
+    Returns:
+        Tactical simulation analysis with annotated image, weak spots, and strategy rating
+    """
+    try:
+        # Use client-provided request_id for progress tracking
+        progress_id = request.request_id or 'default'
+
+        # Set progress callback for real-time updates
+        pipeline.set_progress_callback(
+            lambda stage, progress, msg: update_progress(progress_id, stage, progress, msg)
+        )
+        response = await pipeline.analyze_tactical_simulation(request)
+        return response
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Tactical simulation analysis failed: {str(e)}")

@@ -41,7 +41,133 @@ export interface DrawnWaypoint {
   lng: number;
 }
 
-// Unit composition for evaluation
+// ============================================================================
+// Tactical Simulation Types (Draw Mode)
+// ============================================================================
+
+// Enemy unit types with vision cone parameters
+export type SimEnemyType = 'sniper' | 'rifleman' | 'observer';
+
+// Vision cone specs per enemy type (in meters and degrees)
+export const ENEMY_VISION_SPECS: Record<SimEnemyType, { distance: number; angle: number; color: string }> = {
+  sniper: { distance: 500, angle: 30, color: '#ef4444' },    // Red - long range, narrow
+  rifleman: { distance: 100, angle: 60, color: '#ef4444' },  // Red - 100m effective range, wider FOV
+  observer: { distance: 400, angle: 45, color: '#ef4444' },  // Red - long range, medium
+};
+
+// Simulation enemy unit
+export interface SimEnemy {
+  id: string;
+  type: SimEnemyType;
+  lat: number;
+  lng: number;
+  facing: number;  // Direction in degrees (0 = North, 90 = East, etc.)
+}
+
+// Friendly unit types
+export type SimFriendlyType = 'rifleman' | 'sniper' | 'medic';
+
+// Simulation friendly unit
+export interface SimFriendly {
+  id: string;
+  type: SimFriendlyType;
+  lat: number;
+  lng: number;
+}
+
+// NEW: Segment cover analysis from AI
+export interface SegmentCoverAnalysis {
+  segment_index: number;
+  in_vision_cone: boolean;
+  cover_status: 'exposed' | 'covered' | 'partial' | 'clear';
+  cover_type: string | null;  // "building", "vegetation", "terrain", or null
+  exposure_percentage: number;
+  blocking_feature: string | null;
+  enemy_id: string | null;
+  explanation: string;
+}
+
+// NEW: Tactical scores (0-100 each)
+export interface TacticalScores {
+  stealth: number;
+  safety: number;
+  terrain_usage: number;
+  flanking: number;
+  overall: number;
+}
+
+// NEW: Flanking analysis
+export interface FlankingAnalysis {
+  is_flanking: boolean;
+  approach_angle: number;  // degrees from enemy facing
+  bonus_awarded: number;   // 0-3 points
+  description: string;
+}
+
+// NEW: Cover breakdown summary
+export interface CoverBreakdown {
+  total_segments: number;
+  exposed_count: number;
+  covered_count: number;
+  partial_count: number;
+  clear_count: number;
+  overall_cover_percentage: number;
+  cover_types_used: string[];
+}
+
+// Simulation history entry
+export interface SimulationHistoryEntry {
+  id: string;
+  timestamp: Date;
+  name: string;  // Auto-generated or user-provided
+  result: TacticalSimulationResult;
+  // Snapshot of scenario for context
+  enemyCount: number;
+  friendlyCount: number;
+  waypointCount: number;
+}
+
+// Tactical simulation result from AI
+export interface TacticalSimulationResult {
+  request_id: string;
+  annotated_image: string;  // Base64 image with annotations
+  annotated_image_bounds: Bounds;
+  strategy_rating: number;  // 0-10 score
+  verdict?: string;  // "EXCELLENT", "GOOD", "ACCEPTABLE", "RISKY"
+
+  // NEW: Enhanced analysis
+  tactical_scores?: TacticalScores;
+  flanking_analysis?: FlankingAnalysis;
+  segment_cover_analysis?: SegmentCoverAnalysis[];
+  cover_breakdown?: CoverBreakdown;
+
+  // Strong points (good terrain usage)
+  strong_points?: Array<{
+    location: string;
+    description: string;
+    benefit: string;
+  }>;
+
+  weak_spots: Array<{
+    location: string;
+    description: string;
+    severity: 'low' | 'medium' | 'high' | 'critical';
+    recommendation: string;
+  }>;
+  exposure_analysis: Array<{
+    segment_index: number;
+    enemy_id: string;
+    exposure_percentage: number;
+    description: string;
+  }>;
+  terrain_assessment?: string;
+  overall_assessment: string;
+  recommendations: string[];
+  route_distance_m: number;
+  estimated_time_minutes: number;
+}
+
+// Unit composition for evaluation (legacy)
 export interface UnitComposition {
   squadSize: number;
   riflemen: number;
@@ -119,6 +245,15 @@ interface MissionState {
   routeEvaluation: RouteEvaluationResult | null;
   isEvaluating: boolean;
 
+  // Tactical Simulation State (Draw Mode)
+  simEnemies: SimEnemy[];
+  simFriendlies: SimFriendly[];
+  selectedSimEnemyType: SimEnemyType;
+  selectedSimFriendlyType: SimFriendlyType;
+  simulationResult: TacticalSimulationResult | null;
+  simulationHistory: SimulationHistoryEntry[];
+  selectedHistoryId: string | null;
+
   // Map mode
   mapMode: MapMode;
 
@@ -167,6 +302,26 @@ interface MissionState {
   setUnitComposition: (units: Partial<UnitComposition>) => void;
   setRouteEvaluation: (result: RouteEvaluationResult | null) => void;
   setIsEvaluating: (evaluating: boolean) => void;
+
+  // Tactical Simulation actions
+  addSimEnemy: (lat: number, lng: number) => void;
+  removeSimEnemy: (id: string) => void;
+  updateSimEnemyPosition: (id: string, lat: number, lng: number) => void;
+  updateSimEnemyFacing: (id: string, facing: number) => void;
+  setSelectedSimEnemyType: (type: SimEnemyType) => void;
+  addSimFriendly: (lat: number, lng: number) => void;
+  removeSimFriendly: (id: string) => void;
+  updateSimFriendlyPosition: (id: string, lat: number, lng: number) => void;
+  setSelectedSimFriendlyType: (type: SimFriendlyType) => void;
+  setSimulationResult: (result: TacticalSimulationResult | null) => void;
+  clearSimulation: () => void;
+
+  // Simulation history actions
+  saveToSimulationHistory: (result: TacticalSimulationResult, name?: string) => void;
+  loadFromSimulationHistory: (id: string) => void;
+  removeFromSimulationHistory: (id: string) => void;
+  clearSimulationHistory: () => void;
+  setSelectedHistoryId: (id: string | null) => void;
 }
 
 export const useMission = create<MissionState>((set, get) => ({
@@ -203,6 +358,15 @@ export const useMission = create<MissionState>((set, get) => ({
   },
   routeEvaluation: null,
   isEvaluating: false,
+
+  // Tactical Simulation State
+  simEnemies: [],
+  simFriendlies: [],
+  selectedSimEnemyType: 'rifleman',
+  selectedSimFriendlyType: 'rifleman',
+  simulationResult: null,
+  simulationHistory: [],
+  selectedHistoryId: null,
 
   // UI state
   mapMode: 'idle',
@@ -316,8 +480,9 @@ export const useMission = create<MissionState>((set, get) => ({
       updatedHistory = [newEntry, ...tacticalReportHistory];
     }
 
-    // Store new plan image WITHOUT removing previous ones
-    const updatedPlanImages = { ...planImages };
+    // Store new plan image - REPLACE previous ones to avoid doubled routes
+    // Only keep the latest plan image
+    const updatedPlanImages: Record<number, { image: string; bounds: Bounds }> = {};
     if (detectionDebug?.gemini_route_image && detectionDebug?.gemini_route_bounds) {
       updatedPlanImages[nextPlanId] = {
         image: detectionDebug.gemini_route_image,
@@ -354,7 +519,7 @@ export const useMission = create<MissionState>((set, get) => ({
 
   setSelectedRoute: (routeId) => set({ selectedRouteId: routeId }),
 
-  // Clear routes only (keep units and plan images for history)
+  // Clear routes and plan images (keep units only)
   clearRoutes: () =>
     set({
       tacticalRoutes: [],
@@ -362,7 +527,9 @@ export const useMission = create<MissionState>((set, get) => ({
       selectedRouteId: null,
       samVisualization: null,
       samVisualizationBounds: null,
-      // Keep planImages - they persist across route regenerations
+      planImages: {},  // Clear plan images to show unit markers again
+      geminiRouteImage: null,
+      geminiRouteImageBounds: null,
       geminiRouteImage: null,
       geminiRouteImageBounds: null,
       tacticalAnalysisReport: null,
@@ -403,7 +570,8 @@ export const useMission = create<MissionState>((set, get) => ({
     });
   },
 
-  selectReport: (id) => set({ selectedReportId: id }),
+  // When selecting a tactical report, clear selectedHistoryId to avoid conflicts
+  selectReport: (id) => set({ selectedReportId: id, selectedHistoryId: null }),
 
   setReportModalOpen: (open) => set({ reportModalOpen: open }),
 
@@ -440,6 +608,153 @@ export const useMission = create<MissionState>((set, get) => ({
 
   setIsEvaluating: (evaluating) => set({ isEvaluating: evaluating }),
 
+  // Tactical Simulation actions
+  addSimEnemy: (lat, lng) => {
+    const { simEnemies, selectedSimEnemyType } = get();
+    const newEnemy: SimEnemy = {
+      id: uuidv4(),
+      type: selectedSimEnemyType,
+      lat,
+      lng,
+      facing: 0,  // Default facing North
+    };
+    set({ simEnemies: [...simEnemies, newEnemy], mapMode: 'idle' });
+  },
+
+  removeSimEnemy: (id) => {
+    const { simEnemies } = get();
+    set({ simEnemies: simEnemies.filter((e) => e.id !== id) });
+  },
+
+  updateSimEnemyPosition: (id, lat, lng) => {
+    const { simEnemies } = get();
+    set({
+      simEnemies: simEnemies.map((e) =>
+        e.id === id ? { ...e, lat, lng } : e
+      ),
+    });
+  },
+
+  updateSimEnemyFacing: (id, facing) => {
+    const { simEnemies } = get();
+    set({
+      simEnemies: simEnemies.map((e) =>
+        e.id === id ? { ...e, facing: facing % 360 } : e
+      ),
+    });
+  },
+
+  setSelectedSimEnemyType: (type) => set({ selectedSimEnemyType: type }),
+
+  addSimFriendly: (lat, lng) => {
+    const { simFriendlies, selectedSimFriendlyType } = get();
+    const newFriendly: SimFriendly = {
+      id: uuidv4(),
+      type: selectedSimFriendlyType,
+      lat,
+      lng,
+    };
+    set({ simFriendlies: [...simFriendlies, newFriendly], mapMode: 'idle' });
+  },
+
+  removeSimFriendly: (id) => {
+    const { simFriendlies } = get();
+    set({ simFriendlies: simFriendlies.filter((f) => f.id !== id) });
+  },
+
+  updateSimFriendlyPosition: (id, lat, lng) => {
+    const { simFriendlies } = get();
+    set({
+      simFriendlies: simFriendlies.map((f) =>
+        f.id === id ? { ...f, lat, lng } : f
+      ),
+    });
+  },
+
+  setSelectedSimFriendlyType: (type) => set({ selectedSimFriendlyType: type }),
+
+  setSimulationResult: (result) => {
+    if (result) {
+      // Auto-save to history when setting a new result
+      const { simEnemies, simFriendlies, drawnWaypoints, simulationHistory } = get();
+      const timestamp = new Date();
+      const rating = result.strategy_rating?.toFixed(1) || '?';
+      const verdict = result.verdict || 'N/A';
+      const name = `Analysis ${timestamp.toLocaleTimeString('en-US', { timeZone: 'Asia/Riyadh' })} - ${verdict} (${rating}/10)`;
+
+      const historyEntry: SimulationHistoryEntry = {
+        id: uuidv4(),
+        timestamp,
+        name,
+        result,
+        enemyCount: simEnemies.length,
+        friendlyCount: simFriendlies.length,
+        waypointCount: drawnWaypoints.length,
+      };
+
+      set({
+        simulationResult: result,
+        simulationHistory: [historyEntry, ...simulationHistory].slice(0, 20), // Keep last 20
+        selectedHistoryId: historyEntry.id,
+      });
+    } else {
+      set({ simulationResult: result });
+    }
+  },
+
+  // Simulation history actions
+  saveToSimulationHistory: (result, name) => {
+    const { simEnemies, simFriendlies, drawnWaypoints, simulationHistory } = get();
+    const timestamp = new Date();
+    const autoName = name || `Analysis ${timestamp.toLocaleTimeString('en-US', { timeZone: 'Asia/Riyadh' })}`;
+
+    const historyEntry: SimulationHistoryEntry = {
+      id: uuidv4(),
+      timestamp,
+      name: autoName,
+      result,
+      enemyCount: simEnemies.length,
+      friendlyCount: simFriendlies.length,
+      waypointCount: drawnWaypoints.length,
+    };
+
+    set({
+      simulationHistory: [historyEntry, ...simulationHistory].slice(0, 20),
+    });
+  },
+
+  loadFromSimulationHistory: (id) => {
+    const { simulationHistory } = get();
+    const entry = simulationHistory.find(h => h.id === id);
+    if (entry) {
+      set({
+        simulationResult: entry.result,
+        selectedHistoryId: id,
+        selectedReportId: null, // Clear tactical report selection to avoid conflicts
+        reportModalOpen: true,
+      });
+    }
+  },
+
+  removeFromSimulationHistory: (id) => {
+    const { simulationHistory, selectedHistoryId } = get();
+    set({
+      simulationHistory: simulationHistory.filter(h => h.id !== id),
+      selectedHistoryId: selectedHistoryId === id ? null : selectedHistoryId,
+    });
+  },
+
+  clearSimulationHistory: () => set({ simulationHistory: [], selectedHistoryId: null, tacticalReportHistory: [], selectedReportId: null }),
+
+  setSelectedHistoryId: (id) => set({ selectedHistoryId: id }),
+
+  clearSimulation: () => set({
+    simEnemies: [],
+    simFriendlies: [],
+    drawnWaypoints: [],
+    // Keep simulationResult so the report button stays accessible
+  }),
+
   clearAll: () =>
     set({
       soldiers: [],
@@ -461,5 +776,9 @@ export const useMission = create<MissionState>((set, get) => ({
       drawnWaypoints: [],
       routeEvaluation: null,
       isEvaluating: false,
+      // Reset simulation state
+      simEnemies: [],
+      simFriendlies: [],
+      simulationResult: null,
     }),
 }));

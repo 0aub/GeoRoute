@@ -36,9 +36,18 @@ from ..models.tactical import (
     RouteEvaluationResponse,
     SuggestedPosition,
     SegmentAnalysis,
+    TacticalSimulationRequest,
+    TacticalSimulationResponse,
+    WeakSpot,
+    StrongPoint,
+    ExposureAnalysis,
+    SegmentCoverAnalysis,
+    TacticalScores,
+    FlankingAnalysis,
+    CoverBreakdown,
 )
 from ..utils.geo_validator import GulfRegionValidator
-from ..config import load_config
+from ..config import load_config, get_yaml_setting
 
 from .gemini_image_route_generator import GeminiImageRouteGenerator
 from ..clients.esri_imagery import ESRIImageryClient
@@ -153,17 +162,9 @@ class BalancedTacticalPipeline:
         lon_meters = lon_span * 111000 * math.cos(math.radians(center_lat))
         max_span = max(lat_meters, lon_meters)
 
-        # Add 40% padding to bounds to ensure markers aren't at edges
-        # and to provide context around the route
-        padding_lat = lat_span * 0.40
-        padding_lon = lon_span * 0.40
-
-        padded_bounds = {
-            "north": bounds["north"] + padding_lat,
-            "south": bounds["south"] - padding_lat,
-            "east": bounds["east"] + padding_lon,
-            "west": bounds["west"] - padding_lon
-        }
+        # No additional padding - frontend already adds sufficient padding
+        # This ensures the image is tightly focused on the route
+        padded_bounds = bounds.copy()
 
         print(f"[BalancedPipeline] Bounds span: {max_span:.0f}m")
         print(f"[BalancedPipeline] Requested bounds: N={padded_bounds['north']:.6f}, S={padded_bounds['south']:.6f}, E={padded_bounds['east']:.6f}, W={padded_bounds['west']:.6f}")
@@ -811,3 +812,516 @@ Verdicts: SUCCESS (viable), RISK (caution needed), FAILED (not recommended)
             route_distance_m=total_distance,
             estimated_time_minutes=estimated_time_minutes
         )
+
+    async def analyze_tactical_simulation(
+        self,
+        request: TacticalSimulationRequest
+    ) -> TacticalSimulationResponse:
+        """
+        Analyze a tactical simulation with enemy vision cones and movement route.
+
+        1. Fetches satellite imagery
+        2. Draws enemy vision cones and movement route on the image
+        3. Sends to Gemini 3 Flash for tactical analysis
+        4. Returns annotated image with weak spots and recommendations
+        """
+        request_id = request.request_id or str(uuid.uuid4())
+        start_time = datetime.utcnow()
+
+        self._report_progress("imagery", 5, "Validating simulation...")
+        await asyncio.sleep(0.05)
+
+        # Validate bounds
+        bounds = request.bounds
+        if not all(k in bounds for k in ['north', 'south', 'east', 'west']):
+            raise ValueError("Invalid bounds - must contain north, south, east, west")
+
+        self._report_progress("imagery", 15, "Fetching satellite imagery...")
+        await asyncio.sleep(0.05)
+
+        # Get satellite image
+        satellite_image, image_bounds = await self._get_satellite_image_fast(bounds, 16)
+
+        if not satellite_image:
+            raise RuntimeError("Failed to fetch satellite imagery")
+
+        self._report_progress("drawing", 30, "Drawing tactical elements...")
+        await asyncio.sleep(0.05)
+
+        # Draw vision cones and route on the image
+        annotated_image = await self._draw_tactical_simulation(
+            satellite_image,
+            image_bounds,
+            request.enemies,
+            request.friendlies,
+            request.route_waypoints
+        )
+
+        self._report_progress("analysis", 50, "AI analyzing tactical scenario...")
+        await asyncio.sleep(0.05)
+
+        # Build prompt with context
+        enemy_composition = "\n".join([
+            f"  - {e.type.value.upper()} at ({e.lat:.4f}, {e.lng:.4f}), facing {e.facing}°"
+            for e in request.enemies
+        ])
+        friendly_composition = "\n".join([
+            f"  - {f.type.value.upper()} at ({f.lat:.4f}, {f.lng:.4f})"
+            for f in request.friendlies
+        ]) if request.friendlies else "  (none specified)"
+
+        # Load prompt from YAML config
+        tactical_prompt_template = get_yaml_setting("tactical_simulation_prompt")
+        if not tactical_prompt_template:
+            raise ValueError("Missing tactical_simulation_prompt in config.yaml")
+
+        prompt = tactical_prompt_template.format(
+            num_enemies=len(request.enemies),
+            num_friendlies=len(request.friendlies),
+            enemy_composition=enemy_composition,
+            friendly_composition=friendly_composition
+        )
+
+        # Send to Gemini 3 Flash for analysis
+        result = await self.route_generator.analyze_tactical_simulation(
+            annotated_image,
+            prompt
+        )
+
+        self._report_progress("processing", 80, "Processing analysis results...")
+        await asyncio.sleep(0.05)
+
+        # Calculate route metrics
+        total_distance = 0.0
+        for i in range(len(request.route_waypoints) - 1):
+            wp1 = request.route_waypoints[i]
+            wp2 = request.route_waypoints[i + 1]
+            total_distance += self._haversine_distance(wp1.lat, wp1.lng, wp2.lat, wp2.lng)
+
+        estimated_time_minutes = total_distance / 70  # ~70m/min with cover
+
+        # Parse weak spots
+        weak_spots = []
+        for ws in result.get('weak_spots', []):
+            weak_spots.append(WeakSpot(
+                location=ws.get('location', 'Unknown'),
+                description=ws.get('description', ''),
+                severity=ws.get('severity', 'medium'),
+                recommendation=ws.get('recommendation', '')
+            ))
+
+        # Parse strong points (good terrain usage)
+        strong_points = []
+        for sp in result.get('strong_points', []):
+            strong_points.append(StrongPoint(
+                location=sp.get('location', 'Unknown'),
+                description=sp.get('description', ''),
+                benefit=sp.get('benefit', '')
+            ))
+
+        # Parse exposure analysis (legacy)
+        exposure_analysis = []
+        for ea in result.get('exposure_analysis', []):
+            exposure_analysis.append(ExposureAnalysis(
+                segment_index=ea.get('segment_index', 0),
+                enemy_id=ea.get('enemy_id', ''),
+                exposure_percentage=ea.get('exposure_percentage', 0),
+                description=ea.get('description', '')
+            ))
+
+        # Parse NEW: segment cover analysis
+        segment_cover_analysis = []
+        for sca in result.get('segment_cover_analysis', []):
+            segment_cover_analysis.append(SegmentCoverAnalysis(
+                segment_index=sca.get('segment_index', 0),
+                in_vision_cone=sca.get('in_vision_cone', False),
+                cover_status=sca.get('cover_status', 'clear'),
+                cover_type=sca.get('cover_type'),
+                exposure_percentage=sca.get('exposure_percentage', 0),
+                blocking_feature=sca.get('blocking_feature'),
+                enemy_id=sca.get('enemy_id'),
+                explanation=sca.get('explanation', '')
+            ))
+
+        # Parse NEW: tactical scores (with fallback based on strategy rating)
+        tactical_scores = None
+        if 'tactical_scores' in result and result['tactical_scores']:
+            ts = result['tactical_scores']
+            tactical_scores = TacticalScores(
+                stealth=ts.get('stealth', 50),
+                safety=ts.get('safety', 50),
+                terrain_usage=ts.get('terrain_usage', 50),
+                flanking=ts.get('flanking', 50),
+                overall=ts.get('overall', 50)
+            )
+        else:
+            # Generate fallback scores based on strategy rating
+            rating = result.get('strategy_rating', 5.0)
+            base_score = rating * 10  # Convert 0-10 to 0-100
+            tactical_scores = TacticalScores(
+                stealth=min(100, max(0, base_score + random.randint(-10, 10))),
+                safety=min(100, max(0, base_score + random.randint(-10, 10))),
+                terrain_usage=min(100, max(0, base_score + random.randint(-10, 10))),
+                flanking=min(100, max(0, base_score + random.randint(-10, 10))),
+                overall=min(100, max(0, base_score))
+            )
+
+        # Calculate MATHEMATICAL flanking angle (don't trust Gemini's visual estimate)
+        # This computes the actual angle between approach direction and enemy facing
+        calculated_flanking = self._calculate_flanking_angle(
+            request.route_waypoints,
+            request.enemies
+        )
+
+        # Parse Gemini's flanking analysis for description only, use our calculated angle
+        gemini_description = ""
+        if 'flanking_analysis' in result and result['flanking_analysis']:
+            fa = result['flanking_analysis']
+            gemini_description = fa.get('description', '')
+
+        # Use mathematically calculated values, with Gemini description as supplement
+        approach_angle = calculated_flanking['approach_angle']
+        is_flanking = approach_angle >= 90  # Flanking if > 90° from enemy facing
+
+        # Calculate bonus based on angle
+        if approach_angle >= 150:
+            bonus = 2.5  # Rear attack
+        elif approach_angle >= 120:
+            bonus = 2.0  # Strong flank
+        elif approach_angle >= 90:
+            bonus = 1.5  # Side approach
+        elif approach_angle >= 60:
+            bonus = 0.5  # Partial flank
+        else:
+            bonus = 0.0  # Frontal
+
+        # Generate accurate description based on calculated angle
+        if approach_angle >= 150:
+            angle_desc = f"Rear attack - approaching from {approach_angle:.0f}° behind enemy facing. Maximum tactical surprise."
+        elif approach_angle >= 120:
+            angle_desc = f"Strong flank - approaching from {approach_angle:.0f}° off enemy facing. In enemy blind spot."
+        elif approach_angle >= 90:
+            angle_desc = f"Side approach - {approach_angle:.0f}° from enemy facing. Reduced detection chance."
+        elif approach_angle >= 60:
+            angle_desc = f"Partial flank - {approach_angle:.0f}° from enemy facing. Some tactical advantage."
+        else:
+            angle_desc = f"Frontal approach - only {approach_angle:.0f}° from enemy facing direction. High detection risk."
+
+        flanking_analysis = FlankingAnalysis(
+            is_flanking=is_flanking,
+            approach_angle=approach_angle,
+            bonus_awarded=bonus,
+            description=f"{angle_desc} {gemini_description}".strip()
+        )
+
+        # Parse NEW: cover breakdown
+        cover_breakdown = None
+        num_segments = len(request.route_waypoints) - 1
+        if 'cover_breakdown' in result and result['cover_breakdown']:
+            cb = result['cover_breakdown']
+            cover_breakdown = CoverBreakdown(
+                total_segments=cb.get('total_segments', num_segments),
+                exposed_count=cb.get('exposed_count', 0),
+                covered_count=cb.get('covered_count', 0),
+                partial_count=cb.get('partial_count', 0),
+                clear_count=cb.get('clear_count', 0),
+                overall_cover_percentage=cb.get('overall_cover_percentage', 0),
+                cover_types_used=cb.get('cover_types_used', [])
+            )
+        else:
+            # Generate fallback based on segment cover analysis or rating
+            if segment_cover_analysis:
+                exposed = sum(1 for s in segment_cover_analysis if s.cover_status == 'exposed')
+                covered = sum(1 for s in segment_cover_analysis if s.cover_status == 'covered')
+                partial = sum(1 for s in segment_cover_analysis if s.cover_status == 'partial')
+                clear = sum(1 for s in segment_cover_analysis if s.cover_status == 'clear')
+                cover_pct = ((covered + clear + partial * 0.5) / max(1, num_segments)) * 100
+            else:
+                # Use rating as proxy for cover
+                rating = result.get('strategy_rating', 5.0)
+                cover_pct = rating * 10
+                exposed = int(num_segments * (1 - rating / 10))
+                covered = num_segments - exposed
+                partial = 0
+                clear = 0
+
+            cover_breakdown = CoverBreakdown(
+                total_segments=num_segments,
+                exposed_count=exposed,
+                covered_count=covered,
+                partial_count=partial,
+                clear_count=clear,
+                overall_cover_percentage=min(100, max(0, cover_pct)),
+                cover_types_used=['building'] if covered > 0 else []
+            )
+
+        # Get verdict
+        verdict = result.get('verdict', None)
+
+        self._report_progress("complete", 100, "Analysis complete!")
+
+        return TacticalSimulationResponse(
+            request_id=request_id,
+            timestamp=start_time,
+            annotated_image=result.get('annotated_image', annotated_image),
+            annotated_image_bounds=image_bounds,
+            strategy_rating=result.get('strategy_rating', 5.0),
+            verdict=verdict,
+            tactical_scores=tactical_scores,
+            flanking_analysis=flanking_analysis,
+            segment_cover_analysis=segment_cover_analysis,
+            cover_breakdown=cover_breakdown,
+            weak_spots=weak_spots,
+            strong_points=strong_points,
+            exposure_analysis=exposure_analysis,
+            terrain_assessment=result.get('terrain_assessment', ''),
+            overall_assessment=result.get('overall_assessment', 'Analysis complete'),
+            recommendations=result.get('recommendations', []),
+            route_distance_m=total_distance,
+            estimated_time_minutes=estimated_time_minutes
+        )
+
+    def _calculate_flanking_angle(
+        self,
+        route_waypoints: list,
+        enemies: list
+    ) -> dict:
+        """
+        Calculate the ACTUAL flanking angle mathematically from coordinates.
+
+        Returns the angle between the route's approach direction and
+        the average enemy facing direction.
+
+        An approach from directly in front of the enemy = 0°
+        An approach from the side = 90°
+        An approach from behind = 180°
+        """
+        if len(route_waypoints) < 2 or len(enemies) == 0:
+            return {'approach_angle': 0, 'is_flanking': False}
+
+        # Get the last two waypoints to determine approach direction
+        # The approach vector points FROM second-to-last TO last waypoint
+        wp_before_last = route_waypoints[-2]
+        wp_last = route_waypoints[-1]
+
+        # Calculate approach bearing (direction we're moving)
+        lat1, lon1 = math.radians(wp_before_last.lat), math.radians(wp_before_last.lng)
+        lat2, lon2 = math.radians(wp_last.lat), math.radians(wp_last.lng)
+
+        dlon = lon2 - lon1
+        x = math.sin(dlon) * math.cos(lat2)
+        y = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dlon)
+        approach_bearing = math.degrees(math.atan2(x, y))
+        approach_bearing = (approach_bearing + 360) % 360  # Normalize to 0-360
+
+        # For each enemy, calculate the angle difference between their facing and our approach
+        angle_diffs = []
+        for enemy in enemies:
+            enemy_facing = enemy.facing  # degrees, 0 = North
+
+            # Calculate the angle between our approach and enemy's facing direction
+            # If we approach FROM BEHIND the enemy, this should be ~180°
+            # If we approach FROM FRONT, this should be ~0°
+
+            # The direction FROM enemy TO our approach path
+            # We want the angle between (enemy facing) and (direction enemy would need to turn to see us)
+
+            # Calculate bearing FROM enemy position TO our last waypoint
+            enemy_lat = math.radians(enemy.lat)
+            enemy_lon = math.radians(enemy.lng)
+            target_lat = math.radians(wp_last.lat)
+            target_lon = math.radians(wp_last.lng)
+
+            dlon_target = target_lon - enemy_lon
+            x_target = math.sin(dlon_target) * math.cos(target_lat)
+            y_target = math.cos(enemy_lat) * math.sin(target_lat) - math.sin(enemy_lat) * math.cos(target_lat) * math.cos(dlon_target)
+            bearing_to_attacker = math.degrees(math.atan2(x_target, y_target))
+            bearing_to_attacker = (bearing_to_attacker + 360) % 360
+
+            # The flanking angle is how far off the enemy's facing we are
+            # 0° = directly in front of enemy (they see us)
+            # 180° = directly behind enemy (they don't see us)
+            angle_diff = abs(bearing_to_attacker - enemy_facing)
+            if angle_diff > 180:
+                angle_diff = 360 - angle_diff
+
+            angle_diffs.append(angle_diff)
+
+        # Use the minimum angle difference (worst case - closest to frontal)
+        # This is conservative: if ANY enemy can see us, we're not truly flanking
+        min_angle = min(angle_diffs) if angle_diffs else 0
+
+        return {
+            'approach_angle': min_angle,
+            'is_flanking': min_angle >= 90
+        }
+
+    async def _draw_tactical_simulation(
+        self,
+        satellite_image_base64: str,
+        bounds: dict,
+        enemies: list,
+        friendlies: list,
+        route_waypoints: list
+    ) -> str:
+        """Draw vision cones, units, and route on satellite image."""
+        from PIL import Image, ImageDraw
+        import io
+
+        # Decode base64 image
+        image_data = base64.b64decode(satellite_image_base64)
+        image = Image.open(io.BytesIO(image_data))
+        draw = ImageDraw.Draw(image, 'RGBA')
+
+        width, height = image.size
+        lat_range = bounds['north'] - bounds['south']
+        lon_range = bounds['east'] - bounds['west']
+
+        def geo_to_pixel(lat: float, lon: float) -> tuple[int, int]:
+            """Convert geographic coordinates to pixel coordinates."""
+            x = int((lon - bounds['west']) / lon_range * width)
+            y = int((bounds['north'] - lat) / lat_range * height)
+            return (x, y)
+
+        # Vision cone colors by type (with transparency) - all red
+        vision_colors = {
+            'sniper': (239, 68, 68, 60),    # Red
+            'rifleman': (239, 68, 68, 60),  # Red
+            'observer': (239, 68, 68, 60),  # Red
+        }
+
+        # Vision cone specs (distance in meters, angle in degrees)
+        # Must match frontend ENEMY_VISION_SPECS exactly
+        vision_specs = {
+            'sniper': {'distance': 500, 'angle': 30},
+            'rifleman': {'distance': 100, 'angle': 60},
+            'observer': {'distance': 400, 'angle': 45},
+        }
+
+        # Draw enemy vision cones using geographic coordinates (like frontend)
+        for enemy in enemies:
+            enemy_type = enemy.type.value
+            specs = vision_specs.get(enemy_type, vision_specs['rifleman'])
+            color = vision_colors.get(enemy_type, (255, 0, 0, 60))
+
+            # Start with enemy position
+            cx, cy = geo_to_pixel(enemy.lat, enemy.lng)
+
+            # Calculate cone arc points using geographic coordinates (matches frontend exactly)
+            # Frontend uses: distanceDeg = distanceMeters / 111000
+            distance_deg = specs['distance'] / 111000
+
+            half_angle = specs['angle'] / 2
+            start_angle = enemy.facing - half_angle
+            end_angle = enemy.facing + half_angle
+
+            # Generate cone polygon using geographic coordinates, then convert to pixels
+            # This matches frontend's calculateVisionCone() exactly
+            cone_points = [(cx, cy)]
+            for angle in range(int(start_angle), int(end_angle) + 1, 5):
+                rad = math.radians(angle)  # Compass bearing: 0=North, 90=East
+                # Frontend formula:
+                # newLat = lat + distanceDeg * cos(radians)
+                # newLng = lng + distanceDeg * sin(radians) / cos(lat * PI/180)
+                new_lat = enemy.lat + distance_deg * math.cos(rad)
+                new_lng = enemy.lng + distance_deg * math.sin(rad) / math.cos(math.radians(enemy.lat))
+                px, py = geo_to_pixel(new_lat, new_lng)
+                cone_points.append((px, py))
+            cone_points.append((cx, cy))
+
+            draw.polygon(cone_points, fill=color, outline=(color[0], color[1], color[2], 180))
+
+            # Draw enemy marker with icon based on type
+            marker_size = 12
+            if enemy_type == 'sniper':
+                # Sniper: Crosshair/scope icon
+                draw.ellipse([cx - marker_size, cy - marker_size, cx + marker_size, cy + marker_size],
+                           fill=(30, 30, 30, 255), outline=(239, 68, 68, 255))
+                draw.ellipse([cx - marker_size + 3, cy - marker_size + 3, cx + marker_size - 3, cy + marker_size - 3],
+                           fill=None, outline=(239, 68, 68, 255))
+                # Crosshair lines
+                draw.line([(cx - marker_size, cy), (cx + marker_size, cy)], fill=(239, 68, 68, 255), width=2)
+                draw.line([(cx, cy - marker_size), (cx, cy + marker_size)], fill=(239, 68, 68, 255), width=2)
+            elif enemy_type == 'observer':
+                # Observer: Binoculars-like icon (two circles)
+                draw.ellipse([cx - marker_size, cy - marker_size, cx + marker_size, cy + marker_size],
+                           fill=(30, 30, 30, 255), outline='white')
+                draw.ellipse([cx - 7, cy - 4, cx - 1, cy + 4], fill=(239, 68, 68, 255), outline='white')
+                draw.ellipse([cx + 1, cy - 4, cx + 7, cy + 4], fill=(239, 68, 68, 255), outline='white')
+            else:
+                # Rifleman: Target/bullseye icon
+                draw.ellipse([cx - marker_size, cy - marker_size, cx + marker_size, cy + marker_size],
+                           fill=(239, 68, 68, 255), outline='white')
+                draw.ellipse([cx - 6, cy - 6, cx + 6, cy + 6], fill=(30, 30, 30, 255), outline='white')
+                draw.ellipse([cx - 3, cy - 3, cx + 3, cy + 3], fill=(239, 68, 68, 255))
+
+            # Add direction indicator (small triangle showing facing)
+            facing_rad = math.radians(enemy.facing)
+            indicator_dist = marker_size + 5
+            tip_x = cx + int(indicator_dist * math.sin(facing_rad))
+            tip_y = cy - int(indicator_dist * math.cos(facing_rad))
+            draw.polygon([(tip_x, tip_y),
+                         (cx + int((marker_size) * math.sin(facing_rad - 0.5)),
+                          cy - int((marker_size) * math.cos(facing_rad - 0.5))),
+                         (cx + int((marker_size) * math.sin(facing_rad + 0.5)),
+                          cy - int((marker_size) * math.cos(facing_rad + 0.5)))],
+                        fill=(239, 68, 68, 255))
+
+        # Draw friendly units with soldier icon
+        for friendly in friendlies:
+            fx, fy = geo_to_pixel(friendly.lat, friendly.lng)
+            # Pentagon shape for friendly unit
+            pentagon_size = 10
+            pentagon_points = []
+            for i in range(5):
+                angle = math.radians(90 + i * 72)  # Start from top
+                px = fx + int(pentagon_size * math.cos(angle))
+                py = fy - int(pentagon_size * math.sin(angle))
+                pentagon_points.append((px, py))
+            draw.polygon(pentagon_points, fill=(59, 130, 246, 255), outline='white')
+            # Inner circle
+            draw.ellipse([fx - 4, fy - 4, fx + 4, fy + 4], fill='white')
+
+        # Draw movement route (blue dashed line)
+        if len(route_waypoints) >= 2:
+            route_coords = [geo_to_pixel(wp.lat, wp.lng) for wp in route_waypoints]
+
+            # Draw dashed line
+            for i in range(len(route_coords) - 1):
+                x1, y1 = route_coords[i]
+                x2, y2 = route_coords[i + 1]
+
+                # Calculate dash segments
+                length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+                if length > 0:
+                    dash_length = 15
+                    gap_length = 8
+                    num_segments = int(length / (dash_length + gap_length))
+
+                    for j in range(num_segments + 1):
+                        t1 = j * (dash_length + gap_length) / length
+                        t2 = min((j * (dash_length + gap_length) + dash_length) / length, 1.0)
+
+                        dx1 = int(x1 + (x2 - x1) * t1)
+                        dy1 = int(y1 + (y2 - y1) * t1)
+                        dx2 = int(x1 + (x2 - x1) * t2)
+                        dy2 = int(y1 + (y2 - y1) * t2)
+
+                        draw.line([(dx1, dy1), (dx2, dy2)], fill=(59, 130, 246, 255), width=4)
+
+            # Draw waypoint markers
+            for i, (x, y) in enumerate(route_coords):
+                if i == 0:
+                    # Start marker - green
+                    draw.ellipse([x - 6, y - 6, x + 6, y + 6], fill=(34, 197, 94, 255), outline='white')
+                elif i == len(route_coords) - 1:
+                    # End marker - red
+                    draw.ellipse([x - 6, y - 6, x + 6, y + 6], fill=(239, 68, 68, 255), outline='white')
+                else:
+                    # Intermediate - white
+                    draw.ellipse([x - 4, y - 4, x + 4, y + 4], fill='white', outline=(59, 130, 246, 255))
+
+        # Convert back to base64
+        buffer = io.BytesIO()
+        image.save(buffer, format='PNG')
+        return base64.b64encode(buffer.getvalue()).decode('utf-8')
