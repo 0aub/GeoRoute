@@ -14,7 +14,8 @@
   <a href="#usage">Usage</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
   <a href="#api-reference">API Reference</a> &bull;
-  <a href="#configuration">Configuration</a>
+  <a href="#configuration">Configuration</a> &bull;
+  <a href="docs/MANUAL.md">Full Manual</a>
 </p>
 
 <p align="center">
@@ -279,8 +280,27 @@ VITE_API_URL=http://localhost:8001
 # Google APIs (required)
 GOOGLE_CLOUD_PROJECT=your-project-id
 GOOGLE_MAPS_API_KEY=your-google-maps-api-key
+
+# AI Service - Choose ONE option:
+
+# Option 1: AI Studio (simpler, free tier available)
 GEMINI_API_KEY=your-gemini-api-key
+
+# Option 2: Vertex AI (higher quotas, requires billing)
+# USE_VERTEX_AI=true
+# VERTEX_LOCATION=us-central1
+# (Also requires service-account.json file in project root)
 ```
+
+### Vertex AI Setup (Optional)
+
+For production workloads with higher rate limits:
+
+1. Create a service account with `roles/aiplatform.user` permission
+2. Download the JSON key and save as `service-account.json` in project root
+3. Set `USE_VERTEX_AI=true` in `.env`
+
+See [Full Manual](docs/MANUAL.md#25-vertex-ai-setup) for detailed instructions.
 
 ### Application Config (`georoute/config.yaml`)
 
@@ -487,6 +507,19 @@ docker compose down && docker compose up --build -d
 | Blank satellite imagery | Verify Google Maps API key has Static Maps API enabled. |
 | Container won't start | Run `docker compose logs` to see error details. |
 | Port already in use | Change `BACKEND_PORT` or `UI_PORT` in `.env`. |
+
+---
+
+## Documentation
+
+For comprehensive documentation, see the **[Project Manual](docs/MANUAL.md)** which covers:
+
+- Complete installation and Vertex AI setup
+- Detailed user guide for all modes
+- Full API reference with all fields
+- System architecture deep-dive
+- AI prompt customization
+- Extending the system with new features
 
 ---
 
