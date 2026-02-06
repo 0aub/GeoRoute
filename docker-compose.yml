@@ -45,13 +45,10 @@ services:
     build:
       context: ./georoute
       dockerfile: Dockerfile
-    container_name: georoute-backend
+    # No container_name - allows scaling with: docker compose up -d --scale georoute-backend=3
     # Only expose internally - nginx handles external access
     expose:
       - "9001"
-    # Optionally expose directly for development debugging
-    ports:
-      - "${BACKEND_PORT:-9001}:9001"
     environment:
       - BACKEND_PORT=9001
       - BACKEND_HOST=0.0.0.0
