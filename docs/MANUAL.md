@@ -1594,15 +1594,15 @@ limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
 ```
 API endpoints are limited to 10 requests per second per IP address, with a burst allowance of 20 requests. This prevents individual users from overwhelming the AI processing pipeline.
 
-**Load Balancing:**
+**Load Balancing with Sticky Sessions:**
 ```nginx
 upstream backend {
-    least_conn;  # Send to least busy server
+    ip_hash;  # Sticky sessions - same client always goes to same backend
     server georoute-backend:9001;
     keepalive 32;
 }
 ```
-When multiple backend replicas are running, NGINX distributes requests using the least-connections algorithm, ensuring even load distribution.
+When multiple backend replicas are running, NGINX uses IP hash for sticky sessions. This ensures the same client always routes to the same backend, which is required for SSE progress updates to work correctly (progress state is stored in-memory per backend instance).
 
 **AI Operation Timeouts:**
 ```nginx
