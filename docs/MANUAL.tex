@@ -380,7 +380,7 @@
 
 GeoRoute represents a significant advancement in tactical route planning technology, combining the analytical power of Google's latest Gemini AI models with real-world satellite imagery to provide military planners and tactical analysts with an intelligent decision-support system. The platform addresses a fundamental challenge in tactical operations: the need to quickly assess and plan infantry movement routes while accounting for terrain, enemy positions, cover availability, and approach angles.
 
-Traditional route planning relies heavily on manual map analysis and the experience of individual planners. GeoRoute augments this process by automatically analyzing satellite imagery, identifying potential cover positions, calculating exposure to enemy observation, and generating multiple route options with quantified risk assessments. The system does not replace human judgment but rather provides planners with comprehensive, data-driven analysis to inform their decisions.
+Traditional route planning relies heavily on manual map analysis and the experience of individual planners. GeoRoute augments this process by automatically analyzing satellite imagery, identifying potential cover positions, calculating exposure to enemy observation, and generating optimized tactical routes with quantified risk assessments. The system does not replace human judgment but rather provides planners with comprehensive, data-driven analysis to inform their decisions.
 
 This manual serves as the definitive reference for deploying, configuring, operating, and extending the GeoRoute system. It is intended for:
 \begin{itemize}
@@ -424,7 +424,7 @@ The user interface is built on Leaflet, an industry-standard mapping library, en
 The system provides five primary capabilities, each designed to address specific aspects of tactical route planning:
 
 \begin{description}
-    \item[AI-Powered Route Generation] allows users to simply mark friendly and enemy positions, after which the AI generates multiple tactical route options. Each route represents a different approach philosophy, from balanced routes that trade off speed and concealment, to stealth routes that prioritize maximum cover at the cost of longer travel times.
+    \item[AI-Powered Route Generation] allows users to simply mark friendly and enemy positions, after which the AI generates a tactical route. The AI draws a single optimized cyan route directly on the satellite imagery, following streets and paths between buildings while avoiding obstacles.
 
     \item[User Route Evaluation] enables experienced planners to draw their own proposed routes and submit them for AI analysis. This capability recognizes that human expertise remains essential and provides a way to validate planned routes against AI assessment.
 
@@ -765,7 +765,7 @@ The GeoRoute interface follows a map-centric design, as illustrated in Figure~\r
 GeoRoute provides three distinct operational modes, each designed for a specific use case:
 
 \begin{description}
-    \item[Route Mode] is the primary mode for new tactical planning when you need the AI to propose approach options. You define the problem by placing friendly and enemy positions, and the AI generates multiple route options.
+    \item[Route Mode] is the primary mode for new tactical planning when you need the AI to propose an approach. You define the problem by placing friendly and enemy positions, and the AI generates an optimized tactical route.
 
     \item[Draw Mode] serves experienced planners who have a specific route in mind and want AI validation and enhancement. Rather than generating routes, the system evaluates your proposed path.
 
@@ -1211,13 +1211,13 @@ All AI prompts reside in the \texttt{georoute/config.yaml} file, which is read f
 
 \section{Route Drawing Prompt}
 
-The route drawing prompt instructs Gemini 3 Pro to analyze a satellite image with marked start and end positions, then draw tactical infantry movement routes directly on the image. Key elements include:
+The route drawing prompt instructs Gemini 3 Pro to analyze a satellite image with marked start and end positions, then draw a tactical infantry movement route directly on the image. Key elements include:
 
 \begin{itemize}
-    \item Number of routes to generate
-    \item Line colors (ORANGE for balanced, GREEN for stealth)
-    \item Drawing style (smooth curves vs angular)
-    \item Obstacle avoidance rules
+    \item Single route generation
+    \item Line color (cyan)
+    \item Drawing style (thin, smooth curves)
+    \item Obstacle avoidance rules (follow streets, avoid buildings)
 \end{itemize}
 
 \section{Tactical Simulation Prompt}
