@@ -18,10 +18,7 @@ import type {
 const apiUrl = getApiUrl();
 
 const fetchWithError = async <T>(url: string, options?: RequestInit): Promise<T> => {
-  if (!apiUrl) {
-    throw new Error('API URL not configured');
-  }
-
+  // apiUrl can be empty string for relative URLs (nginx proxy mode)
   const response = await fetch(`${apiUrl}${url}`, {
     ...options,
     headers: {
@@ -45,7 +42,6 @@ export const useHealth = () => {
   return useQuery<HealthStatus>({
     queryKey: ['health'],
     queryFn: () => fetchWithError('/api/health'),
-    enabled: !!apiUrl,
     refetchInterval: 30000,
   });
 };
@@ -106,11 +102,7 @@ export const subscribeToProgress = (
   onProgress: (update: ProgressUpdate) => void,
   onError?: (error: Error) => void
 ): (() => void) => {
-  if (!apiUrl) {
-    onError?.(new Error('API URL not configured'));
-    return () => {};
-  }
-
+  // apiUrl can be empty string for relative URLs (nginx proxy mode)
   const eventSource = new EventSource(`${apiUrl}/api/progress/${requestId}`);
 
   eventSource.onmessage = (event) => {
