@@ -5,7 +5,8 @@
 <h1 align="center">GeoRoute</h1>
 
 <p align="center">
-  <strong>AI-Powered Tactical Route Planning System</strong>
+  <strong>AI-Powered Tactical Route Planning System</strong><br>
+  <em>Version 2.0</em>
 </p>
 
 <p align="center">
@@ -19,16 +20,25 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/version-2.0-blue" alt="Version 2.0" />
   <img src="https://img.shields.io/badge/python-3.11-blue?logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/react-18-61dafb?logo=react&logoColor=white" alt="React" />
   <img src="https://img.shields.io/badge/gemini-3_Pro-4285F4?logo=google&logoColor=white" alt="Gemini" />
   <img src="https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker" />
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" />
+  <img src="https://img.shields.io/badge/nginx-reverse_proxy-009639?logo=nginx&logoColor=white" alt="nginx" />
 </p>
 
 ---
 
 GeoRoute is a tactical route planning system that uses Google's Gemini AI to generate, evaluate, and simulate infantry movement routes on satellite imagery. It draws routes directly on real-world satellite maps, performs cover analysis against enemy positions, and produces detailed tactical reports with scoring and recommendations.
+
+## What's New in Version 2.0
+
+- **NGINX Reverse Proxy** -- Production-ready with rate limiting, compression, and security headers
+- **Vertex AI Support** -- Higher quotas and reliability for production workloads
+- **Load Balancing** -- Scale backend replicas for concurrent users
+- **Unified Configuration** -- Single docker-compose.yml for all environments
+- **Error Sanitization** -- User-friendly error messages without exposing internals
 
 ## Features
 
@@ -70,7 +80,7 @@ GeoRoute is a tactical route planning system that uses Google's Gemini AI to gen
 - Docker & Docker Compose
 - API Keys:
   - [Google Maps API](https://console.cloud.google.com/apis/credentials) (Elevation API, Static API)
-  - [Gemini API](https://aistudio.google.com/app/apikey)
+  - [Vertex AI](https://console.cloud.google.com/vertex-ai) (recommended) or [Gemini API](https://aistudio.google.com/app/apikey)
 
 ### Setup
 
@@ -85,16 +95,70 @@ cp .env.example .env
 ### Run
 
 ```bash
-docker compose up --build
+docker compose up -d --build
 ```
 
 ### Access
 
-| Service  | URL                     |
-|----------|-------------------------|
-| UI       | http://localhost:8080    |
-| API      | http://localhost:8001    |
-| Health   | http://localhost:8001/api/health |
+| Service | URL |
+|---------|-----|
+| **Application** | http://localhost |
+| **API Health** | http://localhost/api/health |
+
+> Access via **port 80** (nginx). Direct service ports (9001, 8080) are for development only.
+
+---
+
+## Production Deployment
+
+### Vertex AI Setup (Recommended)
+
+Vertex AI provides higher quotas and better reliability for production:
+
+1. Enable Vertex AI API in [Google Cloud Console](https://console.cloud.google.com/vertex-ai)
+2. Create a service account with `roles/aiplatform.user` permission
+3. Download JSON key and save as `service-account.json` in project root
+4. Configure `.env`:
+
+```bash
+USE_VERTEX_AI=true
+VERTEX_LOCATION=us-central1
+GOOGLE_CLOUD_PROJECT=your-project-id
+```
+
+### Load Balancing
+
+Scale backend replicas for concurrent users:
+
+```bash
+# Scale to 3 backend instances
+docker compose up -d --scale georoute-backend=3
+```
+
+NGINX automatically load balances using least-connections algorithm.
+
+### Server Deployment
+
+```bash
+# On your server
+git clone https://github.com/0aub/GeoRoute.git
+cd GeoRoute
+
+cp .env.example .env
+# Edit .env with your settings
+
+# Copy service account credentials
+scp service-account.json user@server:~/GeoRoute/
+
+# Start with nginx (port 80)
+docker compose up -d --build
+```
+
+Update `.env` for your domain:
+```bash
+NGINX_PORT=80
+CORS_ORIGINS=http://your-domain.com
+```
 
 ---
 
@@ -138,21 +202,28 @@ docker compose up --build
 ## Architecture
 
 ```
-                         ┌─────────────────────────────┐
-                         │     React + Leaflet UI       │
-                         │   (Vite, Tailwind, Zustand)  │
-                         └──────────────┬───────────────┘
-                                        │ HTTP / SSE
-                         ┌──────────────▼───────────────┐
-                         │      FastAPI Backend          │
-                         │   balanced_tactical_pipeline  │
-                         └──┬──────────┬──────────┬─────┘
-                            │          │          │
-                  ┌─────────▼──┐  ┌────▼────┐  ┌──▼──────────┐
-                  │ Gemini 3   │  │  ESRI   │  │ Google Maps │
-                  │ Pro Image  │  │ Imagery │  │ Elevation   │
-                  │ + 3 Flash  │  │  Tiles  │  │    API      │
-                  └────────────┘  └─────────┘  └─────────────┘
+                    ┌─────────────────────────────────────┐
+                    │            NGINX (Port 80)           │
+                    │   Rate Limiting • Compression • SSL  │
+                    └──────────────┬──────────────────────┘
+                                   │
+              ┌────────────────────┼────────────────────┐
+              │                    │                    │
+              ▼                    ▼                    ▼
+   ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+   │  Backend API #1   │  │  Backend API #2   │  │  Backend API #N   │
+   │   (FastAPI)       │  │   (FastAPI)       │  │   (Scaled)        │
+   └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘
+            │                     │                     │
+            └─────────────────────┼─────────────────────┘
+                                  │
+            ┌─────────────────────┼─────────────────────┐
+            │                     │                     │
+            ▼                     ▼                     ▼
+   ┌──────────────┐      ┌──────────────┐      ┌──────────────┐
+   │   Gemini AI   │      │     ESRI      │      │ Google Maps  │
+   │  (Vertex AI)  │      │   Imagery     │      │  Elevation   │
+   └──────────────┘      └──────────────┘      └──────────────┘
 ```
 
 **Pipeline Flow:**
@@ -173,6 +244,8 @@ docker compose up --build
 ---
 
 ## API Reference
+
+All endpoints are accessed through **http://localhost/api/...**
 
 ### POST `/api/plan-tactical-attack`
 
@@ -270,37 +343,45 @@ Health check endpoint.
 ### Environment Variables (`.env`)
 
 ```bash
-# Server
-BACKEND_PORT=8001          # Backend API port
-BACKEND_HOST=0.0.0.0       # Backend bind address
-UI_PORT=8080               # Frontend port
-CORS_ORIGINS=http://localhost:8080
-VITE_API_URL=http://localhost:8001
+# =============================================================================
+# SERVER CONFIGURATION
+# =============================================================================
+NGINX_PORT=80              # Main entry point (nginx)
+BACKEND_PORT=9001          # Backend API (internal)
+UI_PORT=8080               # Frontend (internal)
+CORS_ORIGINS=http://localhost
+VITE_API_URL=              # Leave empty for nginx proxy mode
 
-# Google APIs (required)
+# =============================================================================
+# GOOGLE CLOUD (REQUIRED)
+# =============================================================================
 GOOGLE_CLOUD_PROJECT=your-project-id
 GOOGLE_MAPS_API_KEY=your-google-maps-api-key
 
-# AI Service - Choose ONE option:
+# =============================================================================
+# AI SERVICE - Vertex AI (Recommended)
+# =============================================================================
+USE_VERTEX_AI=true
+VERTEX_LOCATION=us-central1
+# Requires service-account.json in project root
 
-# Option 1: AI Studio (simpler, free tier available)
-GEMINI_API_KEY=your-gemini-api-key
-
-# Option 2: Vertex AI (higher quotas, requires billing)
-# USE_VERTEX_AI=true
-# VERTEX_LOCATION=us-central1
-# (Also requires service-account.json file in project root)
+# =============================================================================
+# AI SERVICE - Alternative: AI Studio
+# =============================================================================
+# USE_VERTEX_AI=false
+# GEMINI_API_KEY=your-gemini-api-key
 ```
 
-### Vertex AI Setup (Optional)
+### NGINX Configuration
 
-For production workloads with higher rate limits:
+NGINX provides:
+- **Rate Limiting**: 10 req/s per IP for API, 30 req/s for general
+- **Load Balancing**: Least-connections algorithm across backend replicas
+- **Compression**: Gzip for text, JSON, JavaScript, CSS
+- **Timeouts**: 3 minutes for AI operations, 24 hours for SSE
+- **Security Headers**: X-Frame-Options, X-Content-Type-Options, etc.
 
-1. Create a service account with `roles/aiplatform.user` permission
-2. Download the JSON key and save as `service-account.json` in project root
-3. Set `USE_VERTEX_AI=true` in `.env`
-
-See [Full Manual](docs/MANUAL.md#25-vertex-ai-setup) for detailed instructions.
+Configuration file: `nginx/nginx.conf`
 
 ### Application Config (`georoute/config.yaml`)
 
@@ -385,19 +466,10 @@ GeoRoute/
 │   │   │   │   └── ZoomIndicator.tsx
 │   │   │   ├── sidebar/
 │   │   │   │   ├── Sidebar.tsx         # Main sidebar with mode tabs
-│   │   │   │   ├── UnitPlacement.tsx   # Soldier/enemy placement
-│   │   │   │   ├── ActionButtons.tsx   # Plan, evaluate, simulate actions
-│   │   │   │   ├── SimulationControls.tsx  # Enemy/friendly management
-│   │   │   │   ├── SimulationResults.tsx   # Report access button
-│   │   │   │   ├── RouteDrawingControls.tsx # Draw mode controls
-│   │   │   │   ├── UnitCompositionPanel.tsx # Squad editor
-│   │   │   │   ├── TacticalRouteResults.tsx # Generated route display
-│   │   │   │   ├── EvaluationResults.tsx    # Evaluation display
-│   │   │   │   └── AdvancedSettings.tsx
+│   │   │   │   └── ...                 # Unit, action, and control components
 │   │   │   ├── tactical/
 │   │   │   │   ├── TacticalReportModal.tsx  # Report viewer + history
-│   │   │   │   ├── PlanningLoader.tsx       # Progress overlay
-│   │   │   │   └── ScoreBar.tsx
+│   │   │   │   └── PlanningLoader.tsx       # Progress overlay
 │   │   │   └── ui/                    # shadcn/ui component library
 │   │   ├── hooks/
 │   │   │   ├── useMission.ts          # Zustand global state store
@@ -406,15 +478,18 @@ GeoRoute/
 │   │   │   └── Index.tsx              # Main application page
 │   │   └── types/
 │   │       └── index.ts              # TypeScript type definitions
-│   ├── Dockerfile
-│   └── nginx.conf
+│   └── Dockerfile
 │
-├── docs/                              # Additional documentation
-├── tests/                             # Integration tests
-├── assets/                            # Logo SVGs
-├── docker-compose.yml
-├── .env.example
-└── LICENSE                            # MIT
+├── nginx/
+│   └── nginx.conf                     # Reverse proxy configuration
+│
+├── docs/
+│   ├── MANUAL.md                      # Comprehensive user manual
+│   └── MANUAL.tex                     # LaTeX version with TikZ diagrams
+│
+├── docker-compose.yml                 # Unified configuration (nginx + services)
+├── .env.example                       # Environment template
+└── service-account.json               # Vertex AI credentials (not in repo)
 ```
 
 ---
@@ -423,14 +498,15 @@ GeoRoute/
 
 | Layer | Technology |
 |-------|-----------|
+| **Reverse Proxy** | NGINX (Alpine) with rate limiting and load balancing |
 | **Backend** | FastAPI, Python 3.11, Pydantic, Uvicorn |
 | **Frontend** | React 18, TypeScript, Vite, Tailwind CSS |
 | **State** | Zustand (client), TanStack Query (server) |
 | **Maps** | Leaflet + React-Leaflet, ESRI World Imagery |
 | **UI Components** | shadcn/ui (Radix UI primitives) |
-| **AI** | Google Gemini 3 Pro, Gemini 3 Flash, Gemini 2.5 Flash |
+| **AI** | Google Gemini 3 Pro (Vertex AI), Gemini 3 Flash, Gemini 2.5 Flash |
 | **Image Processing** | Pillow (Python) |
-| **Containers** | Docker Compose (Python 3.11-slim + Node 20-Alpine) |
+| **Containers** | Docker Compose (Python 3.11-slim + Node 20-Alpine + NGINX Alpine) |
 
 ---
 
@@ -440,7 +516,7 @@ GeoRoute/
 
 Both services support hot reload without rebuilding containers:
 
-- **Backend**: `georoute/` is mounted as a read-only volume. Code changes are picked up by Uvicorn's `--reload` flag.
+- **Backend**: `georoute/` is mounted as a read-only volume. Set `RELOAD=true` in `.env`.
 - **Frontend**: `ui/src/` is mounted directly. Vite HMR reflects changes instantly.
 
 ### Running Tests
@@ -459,40 +535,14 @@ cd ui && npm test
 # All services
 docker compose logs -f
 
-# Backend only
-docker logs -f georoute-backend
+# Backend only (all replicas)
+docker compose logs -f georoute-backend
 
-# Frontend only
-docker logs -f georoute-ui
-```
+# Specific replica
+docker logs -f georoute-georoute-backend-1
 
----
-
-## Deployment
-
-### AWS / Remote Server
-
-```bash
-git clone https://github.com/0aub/GeoRoute.git
-cd GeoRoute
-
-cp .env.example .env
-# Edit .env: set API keys, update CORS_ORIGINS and VITE_API_URL to your server IP/domain
-
-docker compose up --build -d
-```
-
-Update `.env` for production:
-```bash
-CORS_ORIGINS=http://your-server-ip:8080
-VITE_API_URL=http://your-server-ip:8001
-```
-
-### Updating
-
-```bash
-git pull origin main
-docker compose down && docker compose up --build -d
+# NGINX access logs
+docker compose logs -f nginx
 ```
 
 ---
@@ -503,10 +553,11 @@ docker compose down && docker compose up --build -d
 |---------|----------|
 | "Outside Gulf Region" error | System is restricted to GCC countries. Ensure coordinates are within bounds. |
 | "Zoom In Required" popup | Zoom to level 17+ before placing units. |
-| No routes generated | Check Gemini API key is valid and has quota. Check backend logs. |
-| Blank satellite imagery | Verify Google Maps API key has Static Maps API enabled. |
+| No routes generated | Check Gemini/Vertex AI credentials. Check backend logs. |
+| Backend disconnected | Access via **http://localhost** (nginx), not port 9000. |
 | Container won't start | Run `docker compose logs` to see error details. |
-| Port already in use | Change `BACKEND_PORT` or `UI_PORT` in `.env`. |
+| Rate limit exceeded | Wait 60 seconds, or request higher Vertex AI quota. |
+| Port 80 in use | Change `NGINX_PORT` in `.env`. |
 
 ---
 
@@ -515,6 +566,7 @@ docker compose down && docker compose up --build -d
 For comprehensive documentation, see the **[Project Manual](docs/MANUAL.md)** which covers:
 
 - Complete installation and Vertex AI setup
+- NGINX configuration and load balancing
 - Detailed user guide for all modes
 - Full API reference with all fields
 - System architecture deep-dive
@@ -523,8 +575,4 @@ For comprehensive documentation, see the **[Project Manual](docs/MANUAL.md)** wh
 
 ---
 
-## License
-
-MIT License - Copyright (c) 2026 Ayyub Alzahem
-
-See [LICENSE](LICENSE) for details.
+*Copyright (c) 2026 - Proprietary Software*

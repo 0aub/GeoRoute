@@ -1,6 +1,6 @@
 # GeoRoute Project Manual
 
-**Version 1.0** | **Last Updated: February 2026**
+**Version 2.0** | **Last Updated: February 2026**
 
 ---
 
@@ -11,6 +11,41 @@ GeoRoute represents a significant advancement in tactical route planning technol
 Traditional route planning relies heavily on manual map analysis and the experience of individual planners. GeoRoute augments this process by automatically analyzing satellite imagery, identifying potential cover positions, calculating exposure to enemy observation, and generating multiple route options with quantified risk assessments. The system does not replace human judgment but rather provides planners with comprehensive, data-driven analysis to inform their decisions.
 
 This manual serves as the definitive reference for deploying, configuring, operating, and extending the GeoRoute system. It is intended for system administrators responsible for installation and maintenance, tactical analysts who will use the system operationally, and developers who may need to customize or extend its capabilities.
+
+---
+
+## What's New in Version 2.0
+
+Version 2.0 introduces significant infrastructure improvements for production deployments:
+
+**NGINX Reverse Proxy**
+- All traffic now routes through NGINX on port 80
+- Rate limiting protects against abuse (10 req/s API, 30 req/s general)
+- Gzip compression reduces bandwidth usage
+- Security headers prevent common web vulnerabilities
+- Long timeouts (3 minutes) for AI operations
+- SSE (Server-Sent Events) properly proxied for progress streaming
+
+**Vertex AI Support**
+- Production-recommended AI backend with higher quotas
+- Service account authentication for enterprise deployments
+- Better reliability and faster response times
+- Seamless fallback to AI Studio for development
+
+**Load Balancing**
+- Scale backend replicas with single command: `docker compose up -d --scale georoute-backend=3`
+- NGINX least-connections algorithm distributes load
+- Handle more concurrent users during AI processing
+
+**Unified Configuration**
+- Single docker-compose.yml for all environments
+- Consolidated .env.example with all options
+- Simplified deployment process
+
+**Error Sanitization**
+- User-friendly error messages without exposing internals
+- Proper HTTP status codes (429 for rate limits, 503 for unavailable)
+- Detailed logging for administrators
 
 ---
 
@@ -1535,6 +1570,81 @@ def _sanitize_error(e: Exception) -> tuple[str, int]:
 
 ---
 
+## 10.5 NGINX Reverse Proxy
+
+Version 2.0 introduces NGINX as the default entry point for all traffic. This production-grade reverse proxy provides several critical capabilities that improve security, performance, and scalability.
+
+### Why NGINX?
+
+Direct exposure of application services to the internet introduces unnecessary risk. NGINX serves as a protective layer that:
+
+- **Terminates external connections** before they reach application code
+- **Enforces rate limits** to prevent abuse and denial-of-service attempts
+- **Compresses responses** to reduce bandwidth usage
+- **Adds security headers** to protect against common web vulnerabilities
+- **Load balances** across multiple backend instances
+
+### Configuration
+
+The NGINX configuration resides in `nginx/nginx.conf`. Key settings include:
+
+**Rate Limiting:**
+```nginx
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+```
+API endpoints are limited to 10 requests per second per IP address, with a burst allowance of 20 requests. This prevents individual users from overwhelming the AI processing pipeline.
+
+**Load Balancing:**
+```nginx
+upstream backend {
+    least_conn;  # Send to least busy server
+    server georoute-backend:9001;
+    keepalive 32;
+}
+```
+When multiple backend replicas are running, NGINX distributes requests using the least-connections algorithm, ensuring even load distribution.
+
+**AI Operation Timeouts:**
+```nginx
+proxy_read_timeout 180s;
+proxy_connect_timeout 60s;
+```
+AI operations can take up to 3 minutes. Standard timeout values would terminate these requests prematurely.
+
+**SSE Support:**
+```nginx
+proxy_buffering off;
+proxy_cache off;
+chunked_transfer_encoding on;
+```
+Server-Sent Events require special handling to maintain persistent connections for progress streaming.
+
+### Scaling Backend Replicas
+
+To handle more concurrent users, scale the backend service:
+
+```bash
+# Scale to 3 replicas
+docker compose up -d --scale georoute-backend=3
+
+# Scale back to 1
+docker compose up -d --scale georoute-backend=1
+```
+
+NGINX automatically discovers new replicas through Docker's DNS resolution and distributes load accordingly.
+
+**When to scale:**
+- Multiple analysts working simultaneously
+- AI operations causing request queuing
+- Response times increasing under load
+
+**Scaling limits:**
+- Gemini API rate limits remain the true bottleneck (~60 req/min)
+- Each replica consumes ~500MB RAM
+- More than 5 replicas rarely provides benefit
+
+---
+
 ## 11. Troubleshooting
 
 This section provides guidance for diagnosing and resolving common issues that may arise during GeoRoute operation. Problems generally fall into three categories: configuration issues (incorrect API keys, environment variables), external service issues (rate limits, service unavailability), and user operation issues (operating outside restrictions, insufficient zoom).
@@ -1756,7 +1866,8 @@ This section documents significant releases and their major changes. Minor updat
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 1.0 | Feb 2026 | Initial release with AI-powered route generation, user route evaluation, and tactical simulation with vision cone modeling. Includes Vertex AI support, error sanitization, and comprehensive reporting. |
+| 2.0 | Feb 2026 | Production infrastructure: NGINX reverse proxy with rate limiting and load balancing, Vertex AI as recommended backend, unified docker-compose.yml, backend scaling support, security headers, SSE proxy support, error sanitization. |
+| 1.0 | Feb 2026 | Initial release with AI-powered route generation, user route evaluation, and tactical simulation with vision cone modeling. |
 
 ---
 
