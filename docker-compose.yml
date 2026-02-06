@@ -1,50 +1,105 @@
+# =============================================================================
+# GeoRoute Docker Compose - Unified Configuration
+# =============================================================================
+# nginx reverse proxy is the default entry point
+#
+# Usage:
+#   Production: docker compose up -d
+#   Development: docker compose --profile dev up
+#
+# Default ports:
+#   - NGINX: 80 (configurable via NGINX_PORT)
+#   - Backend: 9001 (internal only)
+#   - UI: 8080 (internal only)
+# =============================================================================
+
 services:
+  # ===========================================================================
+  # NGINX Reverse Proxy (Production Entry Point)
+  # ===========================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: georoute-nginx
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      georoute-backend:
+        condition: service_healthy
+      georoute-ui:
+        condition: service_started
+    networks:
+      - georoute-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ===========================================================================
+  # Backend API Service
+  # ===========================================================================
   georoute-backend:
     build:
       context: ./georoute
       dockerfile: Dockerfile
     container_name: georoute-backend
-    restart: unless-stopped
+    # Only expose internally - nginx handles external access
+    expose:
+      - "9001"
+    # Optionally expose directly for development debugging
     ports:
-      - "${BACKEND_PORT}:${BACKEND_PORT}"
+      - "${BACKEND_PORT:-9001}:9001"
     environment:
-      - BACKEND_PORT=${BACKEND_PORT}
-      - BACKEND_HOST=${BACKEND_HOST}
+      - BACKEND_PORT=9001
+      - BACKEND_HOST=0.0.0.0
       - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
-      - CORS_ORIGINS=${CORS_ORIGINS}
-      - RELOAD=true
-      # Vertex AI settings (optional)
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
+      - RELOAD=${RELOAD:-false}
+      # Vertex AI settings
       - USE_VERTEX_AI=${USE_VERTEX_AI:-false}
       - VERTEX_LOCATION=${VERTEX_LOCATION:-us-central1}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/service-account.json
     volumes:
-      # Mount source code for hot-reload (no rebuild needed)
+      # Mount source code for development hot-reload
       - ./georoute:/app/georoute:ro
-      # Mount service account for Vertex AI (optional - only needed if USE_VERTEX_AI=true)
+      # Mount service account for Vertex AI
       - ./service-account.json:/app/service-account.json:ro
+    networks:
+      - georoute-network
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${BACKEND_PORT}/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:9001/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
-    networks:
-      - georoute-network
+      start_period: 15s
 
+  # ===========================================================================
+  # Frontend UI Service
+  # ===========================================================================
   georoute-ui:
     build:
       context: ./ui
       dockerfile: Dockerfile
+      args:
+        # Empty for nginx proxy mode (relative URLs)
+        - VITE_API_URL=${VITE_API_URL:-}
     container_name: georoute-ui
-    restart: unless-stopped
+    # Only expose internally - nginx handles external access
+    expose:
+      - "8080"
+    # Optionally expose directly for development
     ports:
-      - "${UI_PORT}:8080"
+      - "${UI_PORT:-8080}:8080"
     environment:
-      - VITE_API_URL=${VITE_API_URL}
+      - VITE_API_URL=${VITE_API_URL:-}
     volumes:
-      # Mount source code for hot-reload (no rebuild needed)
+      # Mount source code for development hot-reload
       - ./ui/src:/app/src
       - ./ui/public:/app/public
       - ./ui/index.html:/app/index.html
@@ -60,8 +115,8 @@ services:
         condition: service_healthy
     networks:
       - georoute-network
+    restart: unless-stopped
 
 networks:
   georoute-network:
     driver: bridge
-
