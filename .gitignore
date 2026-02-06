@@ -3,6 +3,12 @@
 .env.local
 .env.*.local
 
+# Service account credentials (NEVER commit these!)
+service-account.json
+*-service-account.json
+*.json.bak
+defence-projects-*.json
+
 # Python
 __pycache__/
 *.py[cod]
