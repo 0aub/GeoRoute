@@ -390,6 +390,54 @@ This manual serves as the definitive reference for deploying, configuring, opera
 \end{itemize}
 
 % ============================================================================
+% WHAT'S NEW IN VERSION 2.0
+% ============================================================================
+
+\chapter*{What's New in Version 2.0}
+\addcontentsline{toc}{chapter}{What's New in Version 2.0}
+
+Version 2.0 introduces significant infrastructure improvements for production deployments:
+
+\section*{NGINX Reverse Proxy}
+\begin{itemize}
+    \item All traffic now routes through NGINX on port 80
+    \item Rate limiting protects against abuse (10 req/s API, 30 req/s general)
+    \item Gzip compression reduces bandwidth usage
+    \item Security headers prevent common web vulnerabilities
+    \item Long timeouts (3 minutes) for AI operations
+    \item SSE (Server-Sent Events) properly proxied for progress streaming
+\end{itemize}
+
+\section*{Vertex AI Support}
+\begin{itemize}
+    \item Production-recommended AI backend with higher quotas
+    \item Service account authentication for enterprise deployments
+    \item Better reliability and faster response times
+    \item Seamless fallback to AI Studio for development
+\end{itemize}
+
+\section*{Load Balancing}
+\begin{itemize}
+    \item Scale backend replicas with single command: \texttt{docker compose up -d --scale georoute-backend=3}
+    \item NGINX IP hash algorithm ensures sticky sessions for SSE progress
+    \item Handle more concurrent users during AI processing
+\end{itemize}
+
+\section*{Unified Configuration}
+\begin{itemize}
+    \item Single docker-compose.yml for all environments
+    \item Consolidated .env.example with all options
+    \item Simplified deployment process
+\end{itemize}
+
+\section*{Error Sanitization}
+\begin{itemize}
+    \item User-friendly error messages without exposing internals
+    \item Proper HTTP status codes (429 for rate limits, 503 for unavailable)
+    \item Detailed logging for administrators
+\end{itemize}
+
+% ============================================================================
 % CHAPTER 1: INTRODUCTION
 % ============================================================================
 
@@ -596,6 +644,23 @@ GOOGLE_CLOUD_PROJECT=your-project-id
     \end{lstlisting}
 \end{enumerate}
 
+\section{Running the System}
+
+With configuration complete, start the GeoRoute services using Docker Compose:
+
+\begin{lstlisting}[style=bash]
+# Start all services (foreground with logs)
+docker compose up --build
+
+# Or run in background (detached mode)
+docker compose up --build -d
+
+# View logs when running in background
+docker compose logs -f
+\end{lstlisting}
+
+The first startup will take several minutes as Docker builds the container images. Subsequent starts are much faster as cached layers are reused.
+
 \section{Accessing the Application}
 
 After successful startup, the services are available at the URLs shown in Table~\ref{tab:service-urls}.
@@ -614,6 +679,22 @@ Health & \texttt{http://localhost:8001/api/health} & Health check endpoint \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\section{Stopping the System}
+
+To gracefully stop the GeoRoute services:
+
+\begin{lstlisting}[style=bash]
+# Stop and remove containers (preserves data volumes)
+docker compose down
+
+# Stop, remove containers, and delete all volumes
+docker compose down -v
+\end{lstlisting}
+
+\begin{warningbox}
+Using the \texttt{-v} flag deletes all Docker volumes, which may include cached data. Use this option only when you want a completely clean state.
+\end{warningbox}
 
 % ============================================================================
 % CHAPTER 3: CONFIGURATION
@@ -690,6 +771,80 @@ RISKY & 0--4.4 & Approach with significant tactical disadvantages \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\section{Docker Compose Configuration}
+
+The \texttt{docker-compose.yml} defines the container orchestration for GeoRoute. Understanding this configuration helps with troubleshooting and customization.
+
+\subsection{Backend Service}
+
+The backend service runs the FastAPI application that handles all AI processing:
+
+\begin{lstlisting}[style=yaml]
+georoute-backend:
+  build:
+    context: ./georoute
+    dockerfile: Dockerfile
+  expose:
+    - "9001"
+  environment:
+    - BACKEND_PORT=9001
+    - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+    - USE_VERTEX_AI=${USE_VERTEX_AI:-false}
+    - GOOGLE_APPLICATION_CREDENTIALS=/app/service-account.json
+  volumes:
+    - ./georoute:/app/georoute:ro
+    - ./service-account.json:/app/service-account.json:ro
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:9001/api/health"]
+    interval: 30s
+\end{lstlisting}
+
+Key configuration points:
+\begin{itemize}
+    \item The backend only exposes ports internally (to NGINX), not to the host
+    \item Service account JSON is mounted read-only for Vertex AI authentication
+    \item Health checks ensure the container is ready before receiving traffic
+    \item No \texttt{container\_name} is specified, allowing horizontal scaling
+\end{itemize}
+
+\subsection{Frontend Service}
+
+The frontend service builds and serves the React application:
+
+\begin{lstlisting}[style=yaml]
+georoute-ui:
+  build:
+    context: ./ui
+    dockerfile: Dockerfile
+  expose:
+    - "8080"
+  environment:
+    - VITE_API_URL=${VITE_API_URL:-}
+  depends_on:
+    georoute-backend:
+      condition: service_healthy
+\end{lstlisting}
+
+The \texttt{depends\_on} with \texttt{condition: service\_healthy} ensures the frontend only starts after the backend passes health checks, preventing user-facing errors during startup.
+
+\subsection{NGINX Service}
+
+NGINX serves as the unified entry point for all traffic:
+
+\begin{lstlisting}[style=yaml]
+nginx:
+  image: nginx:alpine
+  ports:
+    - "${NGINX_PORT:-80}:80"
+  volumes:
+    - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+  depends_on:
+    georoute-backend:
+      condition: service_healthy
+    georoute-ui:
+      condition: service_started
+\end{lstlisting}
 
 % ============================================================================
 % CHAPTER 4: USER GUIDE
@@ -818,6 +973,43 @@ After simulation analysis, route segments are colored based on cover status:
     \item \textcolor{warningamber}{\textbf{Amber}}: Partial cover --- some concealment exists
     \item \textcolor{secondarygreen}{\textbf{Green}}: Covered --- buildings/walls block enemy view
     \item \textcolor{primaryblue}{\textbf{Blue}}: Clear --- outside all vision cones
+\end{itemize}
+
+\section{Report Modal}
+
+The report modal provides comprehensive tactical analysis in a structured format. It appears as an overlay after any analysis operation and contains two primary tabs.
+
+\subsection{Current Analysis Tab}
+
+The Current Analysis tab displays the most recent analysis with the following components:
+
+\begin{description}
+    \item[Header] Displays the verdict badge (EXCELLENT, GOOD, ACCEPTABLE, or RISKY), overall rating score, and quick statistics summarizing the analysis.
+
+    \item[Tactical Scores] A radar chart visualization showing the four scoring dimensions: stealth, safety, terrain usage, and flanking advantage. This visual representation allows quick identification of strengths and weaknesses.
+
+    \item[Cover Breakdown] A horizontal bar visualization showing the proportion of route segments that are covered, partially covered, exposed, or clear of enemy observation.
+
+    \item[Flanking Analysis] An approach angle indicator showing the tactical advantage gained from the route's final approach direction relative to enemy facing.
+
+    \item[Annotated Map] The AI-marked satellite image showing the generated or evaluated route with tactical annotations.
+
+    \item[Weak Spots] Specific locations along the route identified as high-risk, with AI-generated recommendations for mitigation.
+
+    \item[Strong Points] Locations where the route effectively exploits terrain features for cover or tactical advantage.
+
+    \item[Recommendations] AI-generated tactical advice for improving the approach or executing the movement.
+\end{description}
+
+\subsection{History Tab}
+
+The History tab provides access to all previous analyses from the current session:
+
+\begin{itemize}
+    \item Analyses are automatically saved as they are generated
+    \item Click any entry to reload that analysis for review
+    \item Compare multiple approaches by switching between saved analyses
+    \item Clear button removes all saved history
 \end{itemize}
 
 \section{Map Controls}
@@ -1278,7 +1470,43 @@ App.tsx
 
 \section{State Management (Zustand)}
 
-Zustand provides global state management with a minimal API. The store is defined as a single hook (\texttt{useMission}) that components call to access and modify state.
+Zustand provides global state management with a minimal API. The store is defined as a single hook (\texttt{useMission}) that components call to access and modify state. Unlike Redux, Zustand requires minimal boilerplate while providing the same global state capabilities. Components subscribe to specific slices of state, preventing unnecessary re-renders when unrelated state changes.
+
+\section{API Layer (useApi.ts)}
+
+The API layer abstracts HTTP communication with the backend, providing consistent error handling and progress tracking. All API calls flow through utility functions that handle JSON serialization, error extraction, and response parsing. This centralization ensures that error handling logic is consistent throughout the application and simplifies adding new API calls.
+
+\subsection{HTTP Request Handling}
+
+\begin{lstlisting}[style=typescript]
+async function fetchWithError(url: string, options: RequestInit) {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || error.message || 'Request failed');
+  }
+  return response;
+}
+\end{lstlisting}
+
+The error handling logic specifically extracts the \texttt{detail} field from error responses, which is where FastAPI places structured error messages. This allows the backend to provide meaningful, user-friendly error messages that the frontend displays without modification.
+
+\subsection{SSE Progress Streaming}
+
+Server-Sent Events provide real-time progress updates during long-running AI operations:
+
+\begin{lstlisting}[style=typescript]
+function subscribeToProgress(requestId: string, onProgress: Function) {
+  const eventSource = new EventSource(`${API_URL}/api/progress/${requestId}`);
+  eventSource.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    onProgress(data);
+  };
+  return () => eventSource.close();
+}
+\end{lstlisting}
+
+The SSE connection is established before the main API call, ensuring progress updates are received from the moment processing begins. The returned cleanup function is called when the component unmounts or when the operation completes.
 
 \section{Map Layer (TacticalMap.tsx)}
 
@@ -1536,6 +1764,22 @@ GeoRoute is designed with extensibility in mind. The modular architecture, exter
     \item Update visualization components
 \end{enumerate}
 
+\section{Adding New Analysis Modes}
+
+New analysis modes enable entirely new types of tactical assessment. For example, you might add a ``defensive position evaluation'' mode for assessing fortification locations, or a ``convoy route planning'' mode optimized for vehicle movement. Adding a mode is the most substantial extension, requiring new endpoints, processing logic, data models, and UI components.
+
+The existing modes provide templates for implementation. Follow their patterns for request validation, progress reporting, and response formatting to maintain consistency. Consider how the new mode relates to existing modes and whether it should share UI space (as route and draw modes do in the sidebar) or require new interface elements.
+
+Implementation steps:
+\begin{enumerate}
+    \item Create new endpoint in \texttt{tactical.py}
+    \item Add pipeline method in \texttt{balanced\_tactical\_pipeline.py}
+    \item Add request/response models in \texttt{models/tactical.py}
+    \item Create frontend components for the new mode
+    \item Add state management in \texttt{useMission.ts}
+    \item Connect to sidebar controls
+\end{enumerate}
+
 \section{Changing AI Models}
 
 Model selection is configuration-driven. Edit \texttt{georoute/config.yaml}:
@@ -1565,7 +1809,23 @@ No code changes required --- models are loaded from config.
     \item[LOS] Line of Sight
     \item[SSE] Server-Sent Events (real-time progress streaming)
     \item[GCC] Gulf Cooperation Council (regional restriction)
+    \item[NGINX] High-performance web server used as reverse proxy
+    \item[Sticky Sessions] Load balancing technique that routes same client to same server
+    \item[Vertex AI] Google Cloud's managed AI platform for production deployments
 \end{description}
+
+\chapter{Keyboard Shortcuts}
+
+The current version of GeoRoute relies on mouse-based interactions through the map interface. Keyboard shortcuts have not been implemented in this release but may be added in future versions based on user feedback and operational requirements.
+
+Priority shortcut candidates for future implementation:
+\begin{itemize}
+    \item Mode switching (Route/Draw/Simulate)
+    \item Unit type selection
+    \item Report navigation
+    \item Map zoom controls
+    \item Quick actions (clear, undo)
+\end{itemize}
 
 \chapter{Version History}
 
@@ -1574,6 +1834,8 @@ No code changes required --- models are loaded from config.
 \begin{tabularx}{\textwidth}{llX}
 \toprule
 \textbf{Version} & \textbf{Date} & \textbf{Changes} \\
+\midrule
+2.0 & Feb 2026 & Production infrastructure: NGINX reverse proxy with rate limiting and load balancing, Vertex AI as recommended backend, unified docker-compose.yml, backend scaling support with sticky sessions, security headers, SSE proxy support, error sanitization. \\
 \midrule
 1.0 & Feb 2026 & Initial release with AI-powered route generation, user route evaluation, and tactical simulation with vision cone modeling. Includes Vertex AI support and comprehensive reporting. \\
 \bottomrule
