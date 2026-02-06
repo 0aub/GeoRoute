@@ -110,10 +110,10 @@ class ESRIImageryClient:
         num_tiles_y = max_y - min_y + 1
         total_tiles = num_tiles_x * num_tiles_y
 
-        # Allow up to 25 tiles (5x5) for better image quality
-        # Only reduce zoom if we exceed this
-        max_tiles = 25
-        while total_tiles > max_tiles and zoom > 17:
+        # Allow up to 36 tiles (6x6) for better image quality
+        # Only reduce zoom if we exceed this - higher zoom = sharper image
+        max_tiles = 36
+        while total_tiles > max_tiles and zoom > 18:
             zoom -= 1
             nw_tile = self._lat_lon_to_tile(bounds['north'], bounds['west'], zoom)
             se_tile = self._lat_lon_to_tile(bounds['south'], bounds['east'], zoom)
@@ -184,15 +184,33 @@ class ESRIImageryClient:
 
         print(f"[ESRI] Crop region: ({crop_left}, {crop_top}) to ({crop_right}, {crop_bottom})")
 
+        # Check if crop would result in too small an image - keep full stitched for quality
+        crop_width = crop_right - crop_left
+        crop_height = crop_bottom - crop_top
+        min_dimension = 800  # Minimum pixels for good quality
+
         if crop_right <= crop_left or crop_bottom <= crop_top:
             print(f"[ESRI] Invalid crop region, using full stitched image")
             cropped = stitched
             final_bounds = actual_bounds
+        elif crop_width < min_dimension or crop_height < min_dimension:
+            print(f"[ESRI] Crop too small ({crop_width}x{crop_height}), using full stitched image for quality")
+            cropped = stitched
+            final_bounds = actual_bounds
         else:
             cropped = stitched.crop((crop_left, crop_top, crop_right, crop_bottom))
-            final_bounds = bounds.copy()
+            # Calculate ACTUAL bounds of the cropped image (accounts for pixel rounding)
+            lat_range = actual_bounds['north'] - actual_bounds['south']
+            lon_range = actual_bounds['east'] - actual_bounds['west']
+            final_bounds = {
+                'north': actual_bounds['north'] - (crop_top / stitched_height) * lat_range,
+                'south': actual_bounds['north'] - (crop_bottom / stitched_height) * lat_range,
+                'west': actual_bounds['west'] + (crop_left / stitched_width) * lon_range,
+                'east': actual_bounds['west'] + (crop_right / stitched_width) * lon_range,
+            }
 
         print(f"[ESRI] Final image: {cropped.size[0]}x{cropped.size[1]}px")
+        print(f"[ESRI] Final bounds: N={final_bounds['north']:.6f}, S={final_bounds['south']:.6f}, E={final_bounds['east']:.6f}, W={final_bounds['west']:.6f}")
 
         # Convert to bytes
         buffer = BytesIO()

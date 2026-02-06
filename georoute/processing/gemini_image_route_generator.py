@@ -150,37 +150,28 @@ class GeminiImageRouteGenerator:
             py = int((bounds["north"] - lat) / (bounds["north"] - bounds["south"]) * height)
             return (max(0, min(width-1, px)), max(0, min(height-1, py)))
 
-        # Get marker settings from config - scale with image size
-        base_marker_size = get_yaml_setting("markers", "size", default=12)
-        # Scale marker size based on image dimensions (larger image = larger markers)
-        scale_factor = max(width, height) / 640  # Base scale for 640px image
-        marker_size = int(base_marker_size * scale_factor)
-        outline_width_scaled = max(2, int(get_yaml_setting("markers", "outline_width", default=2) * scale_factor))
+        # Small fixed markers - just dots for Gemini to see start/end
+        marker_size = 6  # Small dot
 
-        start_color = tuple(get_yaml_setting("markers", "start_color", default=[0, 100, 255]))
-        end_color = tuple(get_yaml_setting("markers", "end_color", default=[255, 50, 50]))
-        outline_color = tuple(get_yaml_setting("markers", "outline_color", default=[255, 255, 255]))
-        outline_width = outline_width_scaled
-
-        # Start marker - blue filled circle
+        # Start marker - small blue dot
         start_px = gps_to_pixel(start_lat, start_lon)
         draw.ellipse(
             [start_px[0]-marker_size, start_px[1]-marker_size,
              start_px[0]+marker_size, start_px[1]+marker_size],
-            fill=start_color,
-            outline=outline_color,
-            width=outline_width
+            fill=(0, 100, 255),
+            outline=(255, 255, 255),
+            width=1
         )
         print(f"[GeminiImageRoute] START marker at pixel ({start_px[0]}, {start_px[1]})")
 
-        # End marker - red filled circle
+        # End marker - small red dot
         end_px = gps_to_pixel(end_lat, end_lon)
         draw.ellipse(
             [end_px[0]-marker_size, end_px[1]-marker_size,
              end_px[0]+marker_size, end_px[1]+marker_size],
-            fill=end_color,
-            outline=outline_color,
-            width=outline_width
+            fill=(255, 50, 50),
+            outline=(255, 255, 255),
+            width=1
         )
         print(f"[GeminiImageRoute] END marker at pixel ({end_px[0]}, {end_px[1]})")
 
@@ -196,13 +187,32 @@ class GeminiImageRouteGenerator:
         bounds: dict
     ) -> RouteGenerationResult:
         """
-        Generate tactical routes using Gemini 3 Pro Image.
+        Generate tactical routes by asking Gemini for waypoints, then drawing ourselves.
 
-        Adds small markers to image, sends to Gemini with strict edit prompt.
+        This approach preserves original image quality - Gemini only provides route
+        planning intelligence, we handle the drawing.
         """
+        import json
+
         print(f"[GeminiImageRoute] Generating route from ({start_lat:.6f}, {start_lon:.6f}) to ({end_lat:.6f}, {end_lon:.6f})")
 
-        # Add markers to image for Gemini to see
+        # Decode original image - we'll draw on this
+        image_data = base64.b64decode(satellite_image_base64)
+        original_image = Image.open(io.BytesIO(image_data)).convert("RGB")
+        width, height = original_image.size
+        print(f"[GeminiImageRoute] Original image size: {width}x{height}")
+
+        # Calculate actual pixel coordinates for start/end
+        def gps_to_pixel(lat: float, lon: float) -> tuple[int, int]:
+            px = int((lon - bounds["west"]) / (bounds["east"] - bounds["west"]) * width)
+            py = int((bounds["north"] - lat) / (bounds["north"] - bounds["south"]) * height)
+            return (max(0, min(width-1, px)), max(0, min(height-1, py)))
+
+        start_px = gps_to_pixel(start_lat, start_lon)
+        end_px = gps_to_pixel(end_lat, end_lon)
+        print(f"[GeminiImageRoute] Route from pixel {start_px} to {end_px}")
+
+        # Add markers for Gemini to understand start/end
         marked_image, original_size, adjusted_bounds = self._add_markers_to_image(
             satellite_image_base64,
             start_lat, start_lon,
@@ -210,59 +220,60 @@ class GeminiImageRouteGenerator:
             bounds
         )
 
-        # Get route generation prompt from config
-        prompt = get_yaml_setting("route_prompt", default="""
-CRITICAL: This is an IMAGE EDITING task. Preserve the EXACT satellite image.
-BLUE circle = Start, RED circle = Target.
-Draw TWO dashed route lines: ORANGE (balanced) and GREEN (stealth).
-Routes go around buildings, use cover. NO text labels.
-""")
+        # Use Gemini image model to DRAW the route directly on the image
+        prompt = """Edit this satellite image by adding ONE thin cyan line from the blue dot to the red dot.
 
-        print(f"[GeminiImageRoute] Sending to Gemini...")
+IMPORTANT: Do NOT generate a new image. Edit THIS exact satellite image.
+- Add only ONE thin cyan line (the walking path)
+- Follow streets between buildings
+- Keep everything else in the image exactly the same"""
 
-        # Call Gemini image model for route drawing
-        # Use low temperature for more deterministic/consistent output
-        # Note: response_modalities must include both TEXT and IMAGE
+        print(f"[GeminiImageRoute] Asking Gemini to draw route on image...")
+
+        # Use image model for drawing
+        image_model = get_yaml_setting("gemini", "image_model", default="gemini-3-pro-image-preview")
+
         response = self.client.models.generate_content(
-            model=self.image_model,
+            model=image_model,
             contents=[prompt, marked_image],
             config=types.GenerateContentConfig(
-                response_modalities=['TEXT', 'IMAGE'],
-                temperature=0,  # Zero temperature = most deterministic
+                response_modalities=['IMAGE', 'TEXT'],
+                temperature=0.0,  # Deterministic
                 candidate_count=1,
             )
         )
+        print(f"[GeminiImageRoute] Got response from Gemini")
 
-        print(f"[GeminiImageRoute] Response received, parsing...")
-
-        # Find the image in response
+        # Extract the generated image
         route_image_data = None
         for part in response.candidates[0].content.parts:
             if part.inline_data is not None:
                 route_image_data = part.inline_data.data
-                print(f"[GeminiImageRoute] Got image: {len(route_image_data)} bytes")
+                print(f"[GeminiImageRoute] Got route image: {len(route_image_data)} bytes")
                 break
 
         if route_image_data is None:
-            error_msg = "Gemini did not return an image"
-            print(f"[GeminiImageRoute] ERROR: {error_msg}")
-            raise RuntimeError(error_msg)
+            raise RuntimeError("Gemini did not generate a route image")
 
-        # Load the returned image - keep full resolution for quality
-        returned_image = Image.open(io.BytesIO(route_image_data))
-        returned_size = returned_image.size
-        print(f"[GeminiImageRoute] Returned image size: {returned_size[0]}x{returned_size[1]} (input was: {original_size[0]}x{original_size[1]})")
+        # Load the Gemini-generated image
+        gemini_image = Image.open(io.BytesIO(route_image_data)).convert("RGB")
+        gemini_width, gemini_height = gemini_image.size
+        print(f"[GeminiImageRoute] Gemini image size: {gemini_width}x{gemini_height}")
 
-        # DO NOT resize - keep Gemini's output at full resolution
-        # The Leaflet ImageOverlay will scale it to fit the bounds
-        # This preserves maximum quality
+        # If Gemini changed the image size, resize to match original
+        if gemini_width != width or gemini_height != height:
+            print(f"[GeminiImageRoute] Resizing from {gemini_width}x{gemini_height} to {width}x{height}")
+            gemini_image = gemini_image.resize((width, height), Image.Resampling.LANCZOS)
 
-        # Encode to base64 - PNG for lossless quality
+        # Use Gemini's drawn image as the result
+        final_image = gemini_image
+
+        # Encode to base64
         buffer = io.BytesIO()
-        returned_image.save(buffer, format='PNG', optimize=False)
+        final_image.save(buffer, format='PNG', optimize=False)
         route_image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
 
-        print(f"[GeminiImageRoute] Success - route image generated ({len(route_image_base64)} bytes base64)")
+        print(f"[GeminiImageRoute] Gemini drew route on image successfully!")
 
         return RouteGenerationResult(
             route_image_base64=route_image_base64,

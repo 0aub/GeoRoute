@@ -5,8 +5,8 @@
 route_generation:
   # Method: "gemini_image" - Gemini 3 Pro Image draws routes directly on satellite imagery
   method: "gemini_image"
-  # Number of routes to generate (2 = better quality, 3 = more options)
-  num_routes: 2
+  # Number of routes to generate
+  num_routes: 1
 
 # Gemini AI Models
 gemini:
@@ -14,38 +14,17 @@ gemini:
   text_model: "gemini-2.5-flash"             # For basic text generation
   analysis_model: "gemini-3-flash-preview"   # For tactical analysis with vision
 
-# Route Generation Prompt
+# Route Generation Prompt (now used for waypoint extraction, not image editing)
 route_prompt: |
-  Edit this satellite image. Draw exactly 2 infantry foot patrol routes from BLUE marker to RED marker.
+  Plan a tactical infantry route from the BLUE marker to the RED marker.
 
-  ROUTE CONNECTION:
-  - Each route must START at the BLUE circle and END at the RED circle
-  - Routes CONNECT these two points - they are PATHS, not area outlines
-  - Do NOT draw any part of a route beyond the RED target marker
-  - Do NOT draw any part before the BLUE start marker
+  Route requirements:
+  - Go BETWEEN buildings through alleys (not around the perimeter)
+  - Stay close to walls and structures for cover
+  - Avoid wide open streets and exposed areas
+  - Use paths a soldier would naturally walk
 
-  DRAWING RULES:
-  - Draw smooth, curved lines that follow natural walking paths
-  - NEVER cross through buildings - always go AROUND them
-  - Follow roads, sidewalks, alleys, and open ground
-  - Lines should curve naturally like a person walking, not straight angular segments
-  - Use cover: stay close to walls, trees, and shadows where possible
-
-  ORANGE LINE (Primary Route):
-  - Most direct path while avoiding obstacles
-  - Prefer main roads and open paths
-  - Single continuous curved line from blue to red
-
-  GREEN LINE (Stealth Route):
-  - Longer, more concealed path
-  - Use back alleys, building shadows, vegetation
-  - Avoid open areas, stay near cover
-  - Single continuous curved line from blue to red
-
-  CRITICAL:
-  - Routes must NEVER pass through any building or structure
-  - Draw natural curved paths, not straight lines or sharp angles
-  - Each route is ONE continuous line only - no branches, loops, or extensions past the markers
+  Return waypoints as pixel coordinates in JSON format.
   
     
 # Tactical Analysis Prompt (for advanced analytics)
@@ -268,11 +247,11 @@ tactical_simulation_prompt: |
 
 # Marker Settings
 markers:
-  size: 6  # Smaller markers for cleaner route visualization
+  size: 12  # Larger markers for better Gemini visibility
   start_color: [0, 100, 255]  # Blue
   end_color: [255, 50, 50]    # Red
   outline_color: [255, 255, 255]
-  outline_width: 2
+  outline_width: 3
 
 # API Settings
 api:

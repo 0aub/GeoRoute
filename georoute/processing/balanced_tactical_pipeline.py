@@ -508,27 +508,10 @@ Verdicts: SUCCESS (viable), RISK (caution needed), FAILED (not recommended)
         self._report_progress("imagery", 10, "Fetching satellite imagery...")
         await asyncio.sleep(0.1)
 
-        # Calculate bounds around start and end points
-        # Ensure the bounds are roughly square (not too thin in either direction)
-        lat_diff = abs(start_lat - target_lat)
-        lon_diff = abs(start_lon - target_lon)
-
-        # Make the bounds at least as wide as they are tall (and vice versa)
-        # to avoid extremely stretched images
-        max_diff = max(lat_diff, lon_diff)
-        if max_diff < 0.001:  # Minimum ~100m span
-            max_diff = 0.001
-
-        center_lat = (start_lat + target_lat) / 2
-        center_lon = (start_lon + target_lon) / 2
-
-        route_bounds = {
-            "north": center_lat + max_diff / 2,
-            "south": center_lat - max_diff / 2,
-            "east": center_lon + max_diff / 2,
-            "west": center_lon - max_diff / 2
-        }
-        print(f"[BalancedPipeline] Route bounds (square): N={route_bounds['north']:.6f}, S={route_bounds['south']:.6f}, E={route_bounds['east']:.6f}, W={route_bounds['west']:.6f}")
+        # Use the frontend-provided bounds directly
+        # Frontend already calculates appropriate bounds with padding
+        route_bounds = request.bounds
+        print(f"[BalancedPipeline] Using frontend bounds: N={route_bounds['north']:.6f}, S={route_bounds['south']:.6f}, E={route_bounds['east']:.6f}, W={route_bounds['west']:.6f}")
 
         self._report_progress("imagery", 15, "Downloading satellite tiles...")
 
@@ -566,34 +549,17 @@ Verdicts: SUCCESS (viable), RISK (caution needed), FAILED (not recommended)
         # The visual routes are drawn in the Gemini image (orange, green dashed lines)
         total_distance = self._haversine_distance(start_lat, start_lon, target_lat, target_lon)
 
-        # Route distance estimates:
-        # - Balanced: ~20% longer than direct (uses some cover)
-        # - Stealth: ~50% longer than direct (maximizes cover, longer path)
-        balanced_distance = total_distance * 1.2
-        stealth_distance = total_distance * 1.5
-
+        # Single tactical route (Gemini plans the actual path)
         routes_data = [
             {
                 "route_id": 1,
-                "name": "Balanced Approach",
-                "description": "ORANGE route - Uses cover while maintaining reasonable speed.",
-                "strategy": "balanced",
-                "color": "orange",
+                "name": "Tactical Route",
+                "description": "AI-planned tactical approach using available cover.",
+                "strategy": "tactical",
+                "color": "cyan",
                 "waypoints": [
                     {"lat": start_lat, "lon": start_lon, "elevation_m": 0, "distance_from_start_m": 0},
-                    {"lat": target_lat, "lon": target_lon, "elevation_m": 0, "distance_from_start_m": balanced_distance}
-                ],
-                "path_clear": True
-            },
-            {
-                "route_id": 2,
-                "name": "Stealth Approach",
-                "description": "GREEN route - Maximum concealment. Safest tactical option.",
-                "strategy": "stealth",
-                "color": "green",
-                "waypoints": [
-                    {"lat": start_lat, "lon": start_lon, "elevation_m": 0, "distance_from_start_m": 0},
-                    {"lat": target_lat, "lon": target_lon, "elevation_m": 0, "distance_from_start_m": stealth_distance}
+                    {"lat": target_lat, "lon": target_lon, "elevation_m": 0, "distance_from_start_m": total_distance}
                 ],
                 "path_clear": True
             }
@@ -604,10 +570,12 @@ Verdicts: SUCCESS (viable), RISK (caution needed), FAILED (not recommended)
         await asyncio.sleep(0.05)
 
         # Store the route image for UI overlay
-        # Use adjusted bounds (after watermark cropping) for correct overlay positioning
+        # Use the ESRI image_bounds for correct overlay positioning (accounts for crop pixel rounding)
         detection_debug['gemini_route_image'] = result.route_image_base64
-        detection_debug['gemini_route_bounds'] = result.adjusted_bounds or image_bounds
+        final_bounds = result.adjusted_bounds or image_bounds
+        detection_debug['gemini_route_bounds'] = final_bounds
         print(f"[BalancedPipeline] Gemini route image generated successfully")
+        print(f"[BalancedPipeline] Final overlay bounds: N={final_bounds['north']:.6f}, S={final_bounds['south']:.6f}, E={final_bounds['east']:.6f}, W={final_bounds['west']:.6f}")
 
         self._report_progress("routes", 75, "Analyzing route risks...")
         await asyncio.sleep(0.05)

@@ -152,6 +152,9 @@ const RoutePlanner = () => {
           title: 'Tactical Plan Generated',
           description: `Created ${result.routes.length} tactical routes. Review classifications in the sidebar.`,
         });
+        // Success - dismiss the loader
+        setIsPlanning(false);
+        setProgress(null);
       } else {
         console.error('[TacticalPlan] Invalid response format:', result);
         throw new Error('Invalid response format from server');
@@ -256,6 +259,9 @@ const RoutePlanner = () => {
         setSimulationResult(result);
         // Auto-open the report modal
         setReportModalOpen(true);
+        // Success - dismiss the loader
+        setIsEvaluating(false);
+        setProgress(null);
       } else {
         throw new Error('Invalid response format from server');
       }
