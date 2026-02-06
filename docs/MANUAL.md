@@ -2,7 +2,15 @@
 
 **Version 1.0** | **Last Updated: February 2026**
 
-This document is the complete reference for the GeoRoute tactical route planning system. It covers installation, configuration, usage, architecture, API specifications, and customization.
+---
+
+## Executive Summary
+
+GeoRoute represents a significant advancement in tactical route planning technology, combining the analytical power of Google's latest Gemini AI models with real-world satellite imagery to provide military planners and tactical analysts with an intelligent decision-support system. The platform addresses a fundamental challenge in tactical operations: the need to quickly assess and plan infantry movement routes while accounting for terrain, enemy positions, cover availability, and approach angles.
+
+Traditional route planning relies heavily on manual map analysis and the experience of individual planners. GeoRoute augments this process by automatically analyzing satellite imagery, identifying potential cover positions, calculating exposure to enemy observation, and generating multiple route options with quantified risk assessments. The system does not replace human judgment but rather provides planners with comprehensive, data-driven analysis to inform their decisions.
+
+This manual serves as the definitive reference for deploying, configuring, operating, and extending the GeoRoute system. It is intended for system administrators responsible for installation and maintenance, tactical analysts who will use the system operationally, and developers who may need to customize or extend its capabilities.
 
 ---
 
@@ -27,40 +35,51 @@ This document is the complete reference for the GeoRoute tactical route planning
 
 ### 1.1 What is GeoRoute?
 
-GeoRoute is an AI-powered tactical route planning system designed for infantry movement analysis. It combines:
+GeoRoute is an AI-powered tactical route planning system designed for infantry movement analysis. At its core, the system leverages Google's Gemini family of large language models, which possess the remarkable ability to understand and analyze visual imagery, to perform sophisticated tactical assessments that would traditionally require significant manual effort and expertise.
 
-- **Satellite Imagery**: Real-world ESRI World Imagery tiles
-- **AI Analysis**: Google Gemini 3 Pro for visual route generation and analysis
-- **Tactical Simulation**: Enemy vision cones, cover analysis, flanking detection
-- **Interactive Mapping**: Leaflet-based map with NATO military symbols
+The system operates on a fundamental principle: tactical route planning is inherently a visual and spatial problem. By providing AI models with actual satellite imagery of the operational area, along with marked positions of friendly and enemy forces, the system can generate analysis that accounts for real-world terrain features such as buildings, vegetation, roads, and open ground. This approach yields results that are grounded in the actual geography of the area rather than abstract calculations.
+
+GeoRoute integrates four primary technologies to deliver its capabilities:
+
+**Satellite Imagery Foundation**: The system utilizes ESRI World Imagery, the same high-resolution satellite imagery used by professional GIS applications worldwide. This imagery is fetched in real-time and stitched together to create seamless maps of any area within the supported region. The use of actual satellite imagery, rather than simplified maps, allows the AI to identify terrain features, buildings, roads, and vegetation that affect tactical movement.
+
+**Advanced AI Analysis**: Google's Gemini 3 Pro model, specifically the image-generation variant, can actually draw on images. When given a satellite image with marked start and end positions, it generates tactical routes by drawing directly on the imagery, creating visually intuitive route overlays that account for obstacles and cover. The Gemini 3 Flash model, optimized for vision analysis, then examines these routes to assess risk, identify weak points, and generate recommendations.
+
+**Tactical Simulation Engine**: Beyond AI analysis, the system includes a geometric simulation engine that models enemy fields of view as vision cones. These cones are calculated based on realistic parameters for different enemy types (snipers with narrow but long-range vision, riflemen with wider but shorter-range observation). The AI then analyzes which portions of a route fall within these vision cones and, critically, whether terrain features provide concealment.
+
+**Interactive Mapping Interface**: The user interface is built on Leaflet, an industry-standard mapping library, enhanced with military-specific functionality. Users can place units using NATO APP-6 standard symbology, draw movement routes, position enemies with specific facing directions, and visualize the complete tactical picture on a single integrated display.
 
 ### 1.2 Core Capabilities
 
-| Capability | Description |
-|------------|-------------|
-| **Route Generation** | AI draws tactical routes directly on satellite imagery |
-| **Route Evaluation** | Analyze user-drawn routes with position suggestions |
-| **Tactical Simulation** | Vision cone analysis with cover detection |
-| **Scoring System** | Multi-dimensional tactical scoring (0-100) |
-| **Verdict System** | EXCELLENT / GOOD / ACCEPTABLE / RISKY classifications |
+The system provides five primary capabilities, each designed to address specific aspects of tactical route planning:
+
+**AI-Powered Route Generation** allows users to simply mark friendly and enemy positions, after which the AI generates multiple tactical route options. Each route represents a different approach philosophy, from balanced routes that trade off speed and concealment, to stealth routes that prioritize maximum cover at the cost of longer travel times. The AI draws these routes directly on satellite imagery, ensuring they follow realistic paths around buildings, along walls, and through areas of natural cover.
+
+**User Route Evaluation** enables experienced planners to draw their own proposed routes and submit them for AI analysis. This capability recognizes that human expertise remains essential and provides a way to validate planned routes against AI assessment. The system evaluates each segment of the user-drawn route, identifies optimal positions for different unit types, and provides specific recommendations for improving the approach.
+
+**Tactical Simulation** provides the most detailed analysis by combining geometric vision cone calculations with AI-based cover assessment. Users place enemy units with specific types and facing directions, then draw a movement route. The system first calculates which route segments geometrically fall within enemy observation, then uses AI vision analysis to determine whether buildings, walls, or terrain actually block the line of sight. This dual-layer analysis prevents false positives where a route might appear exposed based on geometry alone but is actually protected by intervening structures.
+
+**Multi-Dimensional Scoring** quantifies tactical quality across four dimensions: stealth (how hidden the approach remains), safety (survival probability), terrain usage (how effectively the route exploits available cover), and flanking (the tactical advantage gained from approach angle relative to enemy facing). These individual scores combine into an overall rating that allows direct comparison between route options.
+
+**Verdict Classification** translates numerical scores into actionable categories. Routes rated EXCELLENT represent near-optimal approaches with minimal exposure. GOOD routes are tactically sound with minor improvements possible. ACCEPTABLE routes carry manageable risk and may be suitable when time or terrain constraints limit options. RISKY routes have significant exposure or tactical disadvantages and should only be used when no alternatives exist.
 
 ### 1.3 Geographic Scope
 
-The system is restricted to the **Gulf Cooperation Council (GCC) region**:
-- Saudi Arabia
-- United Arab Emirates
-- Kuwait
-- Bahrain
-- Qatar
-- Oman
+GeoRoute is configured to operate exclusively within the Gulf Cooperation Council region, encompassing Saudi Arabia, the United Arab Emirates, Kuwait, Bahrain, Qatar, and Oman. This geographic restriction, defined as the area between latitude 12°N to 32°N and longitude 34°E to 60°E, is implemented both as a user interface constraint and as a server-side validation.
 
-Coordinates outside this region (latitude 12-32°N, longitude 34-60°E) are rejected.
+The restriction serves multiple purposes. Operationally, it ensures the system is used within its intended context. Technically, it allows optimization of satellite imagery caching and AI model prompting for the specific terrain types common in the Gulf region, including urban environments, desert terrain, and coastal areas. The system's AI prompts and scoring algorithms have been calibrated for the building styles, vegetation patterns, and terrain features typical of this region.
+
+When users attempt to place units or draw routes outside the permitted area, the system displays a clear notification explaining the geographic restriction. The map interface includes a subtle visual indicator showing the boundaries of the operational area, and the map cannot be panned significantly beyond these limits.
 
 ---
 
 ## 2. Installation
 
+This section provides comprehensive guidance for deploying GeoRoute in various environments, from local development setups to production deployments. The system is containerized using Docker, which ensures consistent behavior across different operating systems and simplifies dependency management. Whether you are setting up a personal workstation for evaluation or deploying to cloud infrastructure for team use, the installation process follows the same fundamental steps.
+
 ### 2.1 Prerequisites
+
+Before beginning installation, ensure your system meets the following requirements. The Docker-based deployment abstracts away most software dependencies, but you will need the core container runtime and access to Google Cloud services for the AI and mapping capabilities.
 
 | Requirement | Version | Purpose |
 |-------------|---------|---------|
@@ -71,7 +90,14 @@ Coordinates outside this region (latitude 12-32°N, longitude 34-60°E) are reje
 
 ### 2.2 API Keys Required
 
+GeoRoute requires access to Google Cloud services for both its mapping capabilities and AI analysis. You will need to obtain two types of credentials: a Google Maps API key for satellite imagery and elevation data, and either a Gemini API key (for simple deployments) or Vertex AI credentials (for production use with higher rate limits).
+
+It is important to understand the distinction between these authentication methods. The Google Maps API key is straightforward and works the same way regardless of your AI choice. For AI services, you have two options that are mutually exclusive. AI Studio provides a simple API key that is easy to obtain and includes a free tier, making it ideal for development and evaluation. Vertex AI requires more setup, including service account creation and billing enablement, but provides significantly higher rate limits and is recommended for any production or team deployment where multiple users may be making concurrent requests.
+
 #### Google Maps API Key
+
+The Google Maps API key enables the system to fetch satellite imagery tiles and elevation data. This key is always required regardless of which AI authentication method you choose.
+
 1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
 2. Create a new project or select existing
 3. Enable these APIs:
@@ -152,9 +178,13 @@ GEMINI_API_KEY=your-gemini-api-key
 
 ### 2.5 Vertex AI Setup
 
-Vertex AI provides higher rate limits and is required for production workloads.
+While AI Studio provides the simplest path to getting GeoRoute running, production deployments should use Vertex AI for several important reasons. Vertex AI operates within your Google Cloud project's infrastructure, providing better security controls, audit logging, and integration with your organization's existing cloud governance. More practically, Vertex AI offers substantially higher rate limits, which becomes critical when multiple analysts are using the system simultaneously or when performing batch analysis of multiple routes.
+
+The setup process requires creating a service account, which is Google Cloud's mechanism for giving applications their own identity and permissions. This service account will be granted permission to invoke AI models, and its credentials (in the form of a JSON key file) will be mounted into the GeoRoute container at runtime. This approach follows security best practices by avoiding the embedding of credentials in code or configuration files that might be committed to version control.
 
 #### Step 1: Create Service Account
+
+The first step is to create a dedicated service account for GeoRoute. This account should be used exclusively for this application to maintain clear separation of concerns and simplify permission auditing.
 ```bash
 # In Google Cloud Console or gcloud CLI:
 gcloud iam service-accounts create georoute-sa \
@@ -229,9 +259,15 @@ docker compose down -v
 
 ## 3. Configuration Reference
 
+GeoRoute follows a configuration-driven design philosophy where operational parameters, AI model selections, and even the prompts used to instruct the AI are externalized into configuration files. This approach offers significant advantages: administrators can tune system behavior without modifying source code, different deployments can be customized for specific operational contexts, and AI prompts can be iteratively improved based on observed results.
+
+The configuration is split between environment variables (for deployment-specific settings like API keys and network ports) and YAML files (for application behavior). This separation ensures that sensitive credentials remain outside the codebase while operational parameters are version-controlled and documented.
+
 ### 3.1 Application Configuration (config.yaml)
 
-The file `georoute/config.yaml` contains all application settings and AI prompts.
+The file `georoute/config.yaml` serves as the central configuration hub for all operational parameters. This file is read fresh for each API request, meaning changes take effect immediately without requiring a system restart. This hot-reload capability is particularly valuable when tuning AI prompts or adjusting scoring thresholds based on operational feedback.
+
+The configuration file is organized into logical sections, each controlling a specific aspect of system behavior. Understanding these sections is essential for administrators who need to customize the system for their specific operational requirements.
 
 #### Route Generation Settings
 
@@ -286,24 +322,30 @@ geo:
 
 ### 3.2 Enemy Vision Specifications
 
-These are hardcoded in the frontend (`useMission.ts`) and backend (`balanced_tactical_pipeline.py`):
+The tactical simulation system models enemy observation capabilities through vision cones, which are triangular areas emanating from each enemy position in the direction they are facing. These vision cones represent the area an enemy could theoretically observe, though the actual detection capability is further modified by terrain and cover analysis performed by the AI.
 
-| Enemy Type | Range | Angle | Color |
-|------------|-------|-------|-------|
-| Sniper | 500m | 30° | Red |
-| Rifleman | 100m | 60° | Red |
-| Observer | 400m | 45° | Red |
+The vision specifications are calibrated to represent realistic observation capabilities for different enemy types. Snipers, equipped with magnified optics, can effectively observe at extended ranges but have a narrow field of view due to scope limitations. Standard riflemen have a much wider field of awareness but their effective observation range is limited by the naked eye or iron sights. Observers, typically equipped with binoculars or spotting scopes, fall between these extremes.
+
+These parameters are currently defined in the source code rather than configuration files because they require synchronized updates across both frontend (for visualization) and backend (for analysis). Future versions may externalize these to configuration.
+
+| Enemy Type | Range | Angle | Tactical Significance |
+|------------|-------|-------|----------------------|
+| Sniper | 500m | 30° | Long-range precision threat; narrow but deep danger zone |
+| Rifleman | 100m | 60° | Close-quarters threat; wide but shallow danger zone |
+| Observer | 400m | 45° | Detection and coordination threat; triggers alerts |
 
 ### 3.3 Scoring Thresholds
 
-Defined in `config.yaml` under `tactical_simulation_prompt`:
+The verdict system translates complex multi-dimensional tactical analysis into actionable classifications. Understanding the criteria behind each verdict helps analysts interpret results and make informed decisions about route selection.
 
-| Verdict | Score Range | Requirements |
-|---------|-------------|--------------|
-| EXCELLENT | 8.5 - 10.0 | 90%+ covered, rear flanking, zero exposed |
-| GOOD | 6.5 - 8.4 | 75%+ covered, good flanking, max 1 exposed |
-| ACCEPTABLE | 4.5 - 6.4 | 50-75% covered, some tactical thought |
-| RISKY | 0 - 4.4 | <50% covered OR critical exposure OR frontal |
+The scoring system is intentionally conservative, meaning the AI is calibrated to be critical rather than optimistic. This design choice reflects the asymmetric consequences of tactical errors: an overly optimistic assessment that leads to a failed approach has far greater consequences than a conservative assessment that leads to selection of a longer but safer route. Most routes analyzed by the system will fall in the ACCEPTABLE to GOOD range; EXCELLENT verdicts are reserved for genuinely superior tactical approaches.
+
+| Verdict | Score Range | Interpretation |
+|---------|-------------|----------------|
+| EXCELLENT | 8.5 - 10.0 | Exceptional tactical approach exploiting multiple advantages. Route maximizes cover (90%+), achieves rear or strong flanking position, and has zero exposed segments. Suitable for high-stakes operations. |
+| GOOD | 6.5 - 8.4 | Solid tactical approach with good fundamentals. Route maintains substantial cover (75%+), achieves some flanking advantage, and has at most one brief exposed segment. Recommended for most operations. |
+| ACCEPTABLE | 4.5 - 6.4 | Workable approach with identifiable weaknesses. Route has moderate cover (50-75%) and shows tactical consideration. May be appropriate when terrain constraints limit options. |
+| RISKY | 0 - 4.4 | Approach with significant tactical disadvantages. Route has insufficient cover, critical exposure points, or frontal approach to enemy positions. Should only be used when no alternatives exist. |
 
 ### 3.4 Docker Compose Configuration
 
@@ -361,107 +403,100 @@ georoute-ui:
 
 ## 4. User Guide
 
+This section provides operational guidance for using GeoRoute effectively. While the system is designed to be intuitive, understanding its workflow and capabilities will help analysts extract maximum value from its AI-powered analysis. The guide progresses from basic interface orientation through each of the three primary operational modes.
+
 ### 4.1 Interface Overview
 
-The application has three main areas:
+The GeoRoute interface follows a map-centric design common to geographic information systems, with the interactive satellite map occupying the central workspace and controls organized in a sidebar panel. This layout prioritizes the spatial awareness essential to tactical planning while keeping tools readily accessible.
 
-1. **Map Area** (center): Interactive satellite map
+The application presents three distinct areas that work together:
+
+**The Map Area** dominates the center of the interface and displays high-resolution ESRI World Imagery. This is not a simplified street map but actual satellite photography, allowing analysts to identify buildings, vegetation, terrain features, and other elements relevant to tactical movement. The map supports standard pan and zoom interactions, with zoom levels ranging from regional overview (level 7) to street-level detail (level 19). For accurate tactical planning, the system requires zoom level 17 or higher when placing units, ensuring analysts work with sufficient detail to make meaningful assessments.
+
+**The Sidebar** on the left provides all controls for the current operational mode. Rather than overwhelming users with every available option, the sidebar adapts its content based on the selected mode. In Route mode, it displays unit placement controls and route generation options. In Draw mode, it shows waypoint management and squad composition settings. In Simulate mode, it presents enemy placement, facing direction controls, and simulation parameters. This contextual approach reduces cognitive load and helps analysts focus on the task at hand.
+
+**The Report Modal** appears as an overlay when viewing analysis results. Rather than cluttering the map interface with detailed statistics, the modal provides a comprehensive breakdown of tactical analysis including scores, cover breakdowns, flanking assessments, weak spot identification, and recommendations. Reports are automatically saved to history, allowing analysts to compare multiple approaches or revisit previous analyses.
+
 2. **Sidebar** (left): Controls and settings
 3. **Report Modal** (popup): Analysis results
 
 ### 4.2 Mode Selection
 
-The sidebar has three mode tabs:
+GeoRoute provides three distinct operational modes, each designed for a specific use case in the tactical planning workflow. Understanding when to use each mode is essential for effective system utilization.
 
-| Mode | Purpose |
-|------|---------|
-| **Route** | AI-generated tactical routes |
-| **Draw** | Manual route drawing + evaluation |
-| **Simulate** | Enemy vision cones + cover analysis |
+**Route Mode** is the primary mode for new tactical planning when you need the AI to propose approach options. In this mode, you define the problem by placing friendly and enemy positions, and the AI generates multiple route options optimized for different tactical priorities. This mode is most valuable when you need quick options for unfamiliar terrain or want to compare AI-generated approaches against your own intuition.
+
+**Draw Mode** serves experienced planners who have a specific route in mind and want AI validation and enhancement. Rather than generating routes, the system evaluates your proposed path, identifies potential improvements, and suggests tactical positions such as overwatch points and rally locations. This mode bridges human expertise with AI analysis, allowing planners to leverage their experience while benefiting from the AI's comprehensive terrain assessment.
+
+**Simulate Mode** provides the deepest level of analysis by combining geometric modeling with AI vision analysis. This mode is specifically designed for scenarios where enemy positions and orientations are known or suspected. By modeling enemy fields of view and analyzing cover along your route, the simulation provides segment-by-segment assessment of exposure and concealment.
+
+| Mode | Best Used When | Key Outputs |
+|------|----------------|-------------|
+| **Route** | Exploring options for an area; need AI-generated approaches | Multiple route options with scoring |
+| **Draw** | Have a planned route; want validation and enhancement | Position suggestions, risk assessment |
+| **Simulate** | Know enemy positions; need detailed exposure analysis | Cover analysis, flanking assessment, verdicts |
 
 ### 4.3 Route Mode (AI Generation)
 
-#### Step 1: Place Units
-1. Click **"Place Soldier"** button
-2. Click on the map to place a blue soldier marker
-3. Click **"Place Enemy"** button
-4. Click on the map to place a red enemy marker
+Route Mode automates the initial tactical planning process by having the AI analyze satellite imagery and generate viable approach routes. This mode is particularly valuable when operating in unfamiliar terrain or when time constraints prevent detailed manual planning.
 
-**Requirements:**
-- Zoom level must be 17 or higher
-- Location must be within GCC region
+The workflow begins with defining the tactical situation. You place one or more friendly units to indicate the starting positions and one or more enemy units to indicate the objective area or threat locations. The AI uses these positions to understand the direction of approach and the areas to avoid or approach cautiously.
 
-#### Step 2: Generate Routes
-1. Optionally enable **"Advanced Analytics"** for detailed report
-2. Click **"Plan Tactical Attack"**
-3. Wait for progress indicator (typically 30-90 seconds)
+**Placing Units**: Click the "Place Soldier" button in the sidebar to enter placement mode, indicated by a crosshair cursor. Click on the map to position the soldier marker. The marker uses NATO APP-6 standard symbology, with a blue rounded rectangle representing friendly infantry. Repeat the process with "Place Enemy" to place red diamond-shaped hostile unit markers. Both marker types can be dragged to adjust their positions after placement.
 
-#### Step 3: View Results
-- **Annotated Image**: Satellite image with drawn routes overlaid
-- **Route Colors**: Orange (balanced), Green (stealth)
-- **Risk Segments**: Blue (safe) → Red (critical)
-- **Report**: Click sidebar report button to view analysis
+The system enforces a minimum zoom level of 17 for unit placement. This requirement ensures that positions are specified with sufficient precision for meaningful tactical analysis. At zoom levels below 17, clicking the map displays a notification rather than placing a unit. This safeguard prevents accidentally placing units at incorrect locations due to insufficient map detail.
+
+**Generating Routes**: Once units are placed, click "Plan Tactical Attack" to initiate AI route generation. The process typically takes 30 to 90 seconds, with a progress indicator showing the current stage. The system first fetches and stitches satellite imagery for the operational area, then sends this imagery to the Gemini AI with instructions to draw tactical routes. The AI analyzes the terrain and generates two routes: an orange "Balanced Approach" that optimizes for reasonable speed while using available cover, and a green "Stealth Approach" that prioritizes maximum concealment at the cost of longer travel time.
+
+**Understanding Results**: The generated routes appear as overlays on the satellite imagery. Each route is drawn directly on the image by the AI, meaning it follows realistic paths around obstacles rather than simple geometric lines. The routes are also color-coded by segment risk, transitioning from blue (safe) through yellow and orange to red (critical) based on proximity to threats and exposure.
+
+The optional "Advanced Analytics" checkbox enables a secondary AI analysis that produces a detailed tactical report including recommended approach, optimal timing, equipment suggestions, and identified weaknesses. This additional analysis adds processing time but provides richer decision support.
 
 ### 4.4 Draw Mode (Route Evaluation)
 
-#### Step 1: Draw Your Route
-1. Switch to **Draw** mode
-2. Click waypoints on the map to create your route
-3. Drag waypoints to adjust positions
-4. Route appears as dashed blue line
+Draw Mode recognizes that experienced tactical planners often have specific approaches in mind based on their training, doctrine, or situational knowledge that the AI cannot fully appreciate. Rather than replacing human judgment, this mode augments it by providing AI analysis of user-defined routes and suggesting enhancements based on terrain analysis.
 
-#### Step 2: Configure Squad
-1. Expand **"Unit Composition"** panel
-2. Set squad size (2-12)
-3. Assign unit types: riflemen, snipers, support, medics
+**Drawing Your Route**: Switch to Draw mode using the mode tabs at the top of the sidebar. In this mode, clicking on the map adds waypoints that define your planned movement route. Waypoints appear as circular markers connected by a dashed blue line representing the path. The first waypoint appears green (start point) and the final waypoint appears blue (endpoint). You can adjust your route by dragging any waypoint to a new position; the connecting lines update automatically to reflect the change.
 
-#### Step 3: Evaluate
-1. Click **"Evaluate Route"**
-2. AI analyzes route and suggests positions:
-   - **Green circles**: Cover positions
-   - **Yellow triangles**: Overwatch/sniper positions
-   - **Orange squares**: Rally points
-   - **Red X marks**: Danger zones
-   - **White crosses**: Medic stations
+When drawing routes, consider placing waypoints at tactical decision points rather than at regular intervals. Key positions include corners where direction changes significantly, transitions between cover types, crossing points for open areas, and positions where you anticipate specific tactical actions. The AI will analyze the segments between these waypoints and provide relevant assessments.
+
+**Configuring Your Squad**: The "Unit Composition" panel allows you to specify the composition of the unit that will execute this movement. While this information does not change the route itself, it enables the AI to provide more relevant position suggestions. A squad with snipers will receive different overwatch position recommendations than one without. A squad with a medic benefits from casualty collection point suggestions.
+
+The composition settings include squad size (from 2 to 12), and allocation among riflemen (general-purpose infantry), snipers (long-range precision), support/MG (suppressive fire capability), and medics (casualty care). The sum of specialized roles does not need to equal squad size; the remainder is assumed to be additional riflemen.
+
+**Evaluating the Route**: Clicking "Evaluate Route" sends your drawn route and squad composition to the AI for analysis. The AI examines the satellite imagery along your path and generates two categories of output: suggested positions and segment risk assessments.
+
+Suggested positions are marked directly on an annotated version of the satellite image using distinct symbols. Green circles indicate cover positions where soldiers can take shelter during movement pauses. Yellow triangles mark potential overwatch or sniper positions with good sight lines. Orange squares identify rally points suitable for regrouping if the unit becomes separated. Red X marks highlight danger zones that require extra caution when traversing. White crosses with red outlines suggest medic station positions for casualty treatment.
+
+The segment analysis provides a risk assessment for each portion of the route between waypoints, along with specific suggestions for safely traversing that segment. These suggestions might include recommendations to stay close to a particular structure, move quickly through an exposed area, or use smoke for concealment.
 
 ### 4.5 Simulate Mode (Tactical Simulation)
 
-#### Step 1: Place Enemies
-1. Switch to **Simulate** mode
-2. Select enemy type: Sniper, Rifleman, or Observer
-3. Click map to place enemy
-4. Vision cone appears based on enemy type and facing direction
+Simulate Mode provides the most sophisticated analysis capability in GeoRoute, combining geometric vision cone modeling with AI-based cover assessment. This mode is designed for scenarios where intelligence has provided information about enemy positions and orientations, allowing for detailed assessment of detection risk along a planned route.
 
-#### Step 2: Rotate Enemies
-- Click enemy marker → popup appears → click "Rotate +45°"
-- Or drag the directional indicator
+The fundamental insight behind Simulate Mode is that geometric exposure does not equal actual exposure. A route segment might pass through the geometric cone of an enemy's field of view, but if a building stands between the enemy and the path, the segment is actually protected. Traditional planning tools that only calculate geometric intersection would flag this segment as exposed, leading to unnecessarily conservative route selection. By incorporating AI vision analysis of the satellite imagery, GeoRoute can distinguish between geometric exposure and actual exposure.
 
-#### Step 3: Place Friendlies (Optional)
-1. Select friendly type: Rifleman, Sniper, or Medic
-2. Click map to place friendly unit
+**Placing Enemy Units**: In Simulate Mode, enemy placement includes additional parameters beyond position. First, select the enemy type from the dropdown (Sniper, Rifleman, or Observer). Each type has different vision cone characteristics reflecting their observation capabilities. Then click on the map to place the enemy. A red circular marker appears at the clicked location, and a semi-transparent red cone extends from the marker showing the enemy's field of view.
 
-#### Step 4: Draw Movement Route
-1. Click waypoints to draw the planned movement route
-2. Segments are colored automatically:
-   - **Amber**: In danger zone (before analysis)
-   - **Green**: Clear of all vision cones
+The default facing direction is north (0°). To adjust this, click on the enemy marker to open its popup, then click "Rotate +45°" to rotate the facing direction clockwise in 45-degree increments. The vision cone rotates accordingly, allowing you to model the specific direction each enemy is watching. Getting facing directions correct is crucial for accurate simulation, as the analysis identifies flanking opportunities based on the relationship between your approach angle and enemy facing.
 
-#### Step 5: Run Simulation
-1. Click **"Run Simulation"**
-2. AI analyzes each segment for actual cover status:
-   - **Red**: Exposed (in cone, no cover)
-   - **Amber**: Partial cover
-   - **Green**: Covered (building/terrain blocks LOS)
-   - **Blue**: Clear (outside all cones)
+**Placing Friendly Units**: Optionally, you can place friendly units to represent your forces. While not required for the simulation, placing friendlies provides context in the annotated output and may influence AI recommendations. Select the friendly type (Rifleman, Sniper, or Medic) and click to place. Friendly units appear as blue rectangular markers using NATO symbology.
 
-#### Step 6: View Report
-Click **"View Report"** to see:
-- Overall verdict and rating
-- Tactical scores (radar chart)
-- Cover breakdown (visual bar)
-- Flanking analysis
-- Weak spots with recommendations
-- Movement timeline
+**Drawing the Movement Route**: With the tactical situation defined, draw your planned movement route by clicking waypoints on the map, just as in Draw Mode. The critical difference in Simulate Mode is that the route is immediately evaluated against the placed vision cones.
+
+Before running the full AI analysis, the system provides preliminary geometric feedback by coloring route segments. Segments that pass through any enemy vision cone appear in amber, indicating they are in the "danger zone" and require analysis to determine if cover exists. Segments entirely outside all vision cones appear in green, indicating they are geometrically clear. This immediate visual feedback helps you understand the baseline exposure before committing to the more time-consuming AI analysis.
+
+**Running the Simulation**: Clicking "Run Simulation" initiates the comprehensive analysis. The system captures the current satellite imagery with all markers and vision cones drawn, then sends this annotated image to the AI with detailed instructions for cover analysis. The AI examines each route segment and determines whether the geometric exposure translates to actual exposure or whether terrain features provide concealment.
+
+After analysis, route segments are recolored based on actual cover status. Red indicates truly exposed segments where no cover blocks the line of sight. Amber indicates partial cover where some concealment exists but the segment is not fully protected. Green indicates fully covered segments where buildings, walls, or substantial terrain block the enemy's view entirely. Blue indicates segments outside all vision cones, confirmed clear.
+
+**Interpreting the Report**: The simulation report provides multi-dimensional analysis. The overall verdict (EXCELLENT, GOOD, ACCEPTABLE, or RISKY) gives immediate assessment. The strategy rating (0-10) quantifies the approach quality. Tactical scores break down performance across stealth, safety, terrain usage, and flanking dimensions.
+
+The flanking analysis deserves special attention. The system calculates the actual angle of approach relative to each enemy's facing direction. Approaches from directly in front (0° off facing) are highly detectable, while approaches from behind (180° off facing) exploit the enemy's blind spot. The report indicates whether your route achieves flanking advantage and the specific bonus points awarded.
+
+The cover breakdown visualizes the proportion of your route that is exposed, partially covered, fully covered, or clear. This aggregate view helps assess overall approach viability at a glance.
+
+Finally, the weak spots section identifies specific segments or positions that present the greatest risk, along with recommendations for mitigating these vulnerabilities. These recommendations might include using smoke grenades, timing movement when enemy attention is elsewhere, or modifying the route to add intermediate cover.
 
 ### 4.6 Report Modal
 
@@ -499,7 +534,13 @@ Shows the most recent analysis with:
 
 ## 5. System Architecture
 
+Understanding the system architecture enables administrators to troubleshoot issues effectively, developers to extend functionality appropriately, and analysts to appreciate the computational processes underlying their tactical assessments. GeoRoute follows a modern microservices-inspired architecture where the frontend and backend operate as independent containerized services communicating through a well-defined API contract.
+
+The architectural decisions reflect the system's priorities: real-time responsiveness for user interactions, scalability for concurrent analysts, and modularity for future enhancement. The separation of concerns between presentation, business logic, and external services allows each layer to evolve independently while maintaining stable interfaces.
+
 ### 5.1 High-Level Architecture
+
+The following diagram illustrates the major components and their relationships. Data flows from user input through the React frontend, across HTTP and Server-Sent Events connections to the FastAPI backend, and out to external services including satellite imagery providers and AI models. The response path reverses this flow, with processed results propagating back to the user interface for visualization.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -565,7 +606,15 @@ Shows the most recent analysis with:
 └───────────┘      └─────────────┘     └─────────────┘
 ```
 
+The architecture diagram reveals several key design patterns. The React frontend maintains application state through Zustand, a lightweight state management library that provides predictable state updates without the boilerplate of larger alternatives. The frontend communicates with the backend through two channels: standard HTTP POST requests for initiating analyses, and Server-Sent Events (SSE) for receiving real-time progress updates during long-running operations.
+
+The FastAPI backend serves as an orchestration layer, coordinating between multiple external services. When a request arrives, the backend validates inputs, fetches required imagery, invokes AI services, processes results, and assembles the response. This orchestration happens within the BalancedTacticalPipeline class, which provides a consistent workflow regardless of which specific operation (route generation, evaluation, or simulation) is being performed.
+
+External service integration is handled through dedicated client classes, each encapsulating the specifics of a particular API. This abstraction allows the pipeline to work with different service implementations and simplifies testing through dependency injection.
+
 ### 5.2 Request Flow
+
+The request flow diagram below traces a complete route generation operation from user click to displayed results. Understanding this flow helps troubleshoot latency issues and identify optimization opportunities. The flow is divided into frontend initiation, backend orchestration, external service calls, and response delivery.
 
 #### Route Generation Flow
 
@@ -629,7 +678,13 @@ User clicks "Plan Tactical Attack"
 └────────────────────────┘
 ```
 
+Each stage of the pipeline emits progress updates through an SSE channel, allowing the frontend to display meaningful status information to users. The progress percentages are approximate and calibrated based on typical operation durations: imagery acquisition is usually quick (under 5 seconds), while AI processing can take 30 to 60 seconds depending on image complexity and API load. These progress updates help users understand that the system is actively working, reducing perceived latency.
+
+The pipeline stages are designed to fail fast when possible. Coordinate validation occurs immediately, preventing wasted API calls for out-of-bounds requests. Imagery acquisition includes retry logic for transient network failures. AI processing includes timeout handling to prevent indefinite hangs. This defensive design ensures that failures are reported quickly rather than leaving users waiting.
+
 ### 5.3 Data Flow
+
+The data flow diagram illustrates the transformation of data as it moves through the system. User input begins as simple coordinates and configuration, is validated and expanded, enriched through external service calls, and ultimately transformed into actionable tactical intelligence presented through the user interface.
 
 ```
                     ┌─────────────────────────────────┐
@@ -676,11 +731,23 @@ User clicks "Plan Tactical Attack"
                     └─────────────────────────────┘
 ```
 
+A key insight from the data flow diagram is the fan-out and fan-in pattern. A single user request fans out to multiple external services (ESRI for imagery, Gemini for AI analysis, Google Maps for elevation), gathers their results, and fans back into a unified response. This pattern enables parallel service calls where possible, reducing total latency compared to sequential execution. However, it also means that the overall operation is only as reliable as the least reliable external service, which is why robust error handling and fallback strategies are essential.
+
+The final response assembly phase merges data from multiple sources into a coherent package. The annotated satellite image (base64 encoded) provides visual context, while structured JSON data enables programmatic access to scores, coordinates, and recommendations. This dual-format response supports both human consumption through the report modal and potential integration with external systems.
+
 ---
 
 ## 6. API Reference
 
+The GeoRoute API follows REST conventions with JSON request and response bodies. All endpoints are prefixed with `/api/` to distinguish them from potential future static file serving. The API is designed to be self-describing, with meaningful HTTP status codes, detailed error messages, and consistent response structures across all endpoints.
+
+Authentication is not currently implemented at the application level; the assumption is that deployment environments will provide perimeter security through network configuration or reverse proxy authentication. For production deployments requiring user-level access control, an authentication middleware should be added at the FastAPI level.
+
+All timestamps use ISO 8601 format in UTC timezone. Coordinates use the WGS84 datum (standard GPS coordinates). Distances are in meters, times in seconds or minutes as labeled, and angles in degrees with 0 representing north and increasing clockwise.
+
 ### 6.1 Health Check
+
+The health check endpoint provides a simple mechanism for monitoring systems and load balancers to verify that the service is operational. It returns a minimal response without performing any complex operations, ensuring it responds quickly even when other services are under load.
 
 **Endpoint:** `GET /api/health`
 
@@ -693,6 +760,8 @@ User clicks "Plan Tactical Attack"
 ```
 
 ### 6.2 Plan Tactical Attack
+
+This is the primary endpoint for AI-powered route generation. When invoked, it triggers a multi-stage pipeline that fetches satellite imagery, invokes Gemini AI to draw tactical routes, analyzes the results, and returns a comprehensive response including route visualizations and tactical assessments. Due to the complexity of operations involved, this endpoint can take 30 to 90 seconds to complete; clients should use the progress streaming endpoint to provide user feedback during this time.
 
 **Endpoint:** `POST /api/plan-tactical-attack`
 
@@ -801,6 +870,8 @@ User clicks "Plan Tactical Attack"
 
 ### 6.3 Evaluate User Route
 
+This endpoint evaluates a user-defined route rather than generating new routes. It is designed for experienced planners who have specific approach routes in mind and want AI-assisted validation and enhancement suggestions. The endpoint accepts a sequence of waypoints defining the route, along with optional squad composition information that influences position recommendations.
+
 **Endpoint:** `POST /api/evaluate-route`
 
 **Request Body:**
@@ -869,6 +940,10 @@ User clicks "Plan Tactical Attack"
 ```
 
 ### 6.4 Analyze Tactical Simulation
+
+The tactical simulation endpoint provides the most sophisticated analysis capability, combining geometric vision cone modeling with AI-based cover assessment. It requires detailed information about enemy positions including their types and facing directions, enabling the system to calculate fields of view and analyze whether terrain features provide concealment along the proposed route.
+
+The response includes segment-by-segment cover analysis, flanking bonus calculations, multi-dimensional scores, and an overall verdict. This detailed breakdown enables analysts to understand exactly where and why exposure occurs, supporting informed decisions about route modification or acceptance.
 
 **Endpoint:** `POST /api/analyze-tactical-simulation`
 
@@ -996,6 +1071,10 @@ User clicks "Plan Tactical Attack"
 
 ### 6.5 Progress Streaming (SSE)
 
+Long-running operations benefit from real-time progress feedback. The progress streaming endpoint uses Server-Sent Events (SSE), a standard HTTP mechanism for server-to-client push communication. When a client connects to this endpoint with a request ID obtained from one of the analysis endpoints, it receives a continuous stream of progress updates until the operation completes.
+
+SSE was chosen over WebSockets for several reasons: it requires no special server configuration, works through standard HTTP infrastructure including proxies and load balancers, automatically reconnects after network interruptions, and is well-supported in modern browsers. The trade-off is that SSE is unidirectional (server to client only), which is perfectly suitable for progress reporting.
+
 **Endpoint:** `GET /api/progress/{request_id}`
 
 **Response:** Server-Sent Events stream
@@ -1023,7 +1102,13 @@ data: {"stage": "complete", "progress": 100, "message": "Tactical plan ready!"}
 
 ## 7. Data Models
 
+Data models define the structure of information exchanged between system components. In GeoRoute, Pydantic models on the backend and TypeScript interfaces on the frontend ensure type safety and provide self-documenting data contracts. Understanding these models is essential for developers extending the system or integrating it with external tools.
+
+The models are designed to be self-contained and serializable to JSON, enabling straightforward API communication. Optional fields use Python's Optional type or TypeScript's optional modifier, allowing graceful handling of incomplete data without runtime errors.
+
 ### 7.1 Unit Models
+
+Unit models represent military entities placed on the map. The basic TacticalUnit model captures the essential properties common to all units, while specialized models like SimEnemyUnit add context-specific fields such as facing direction for enemies in simulation mode.
 
 #### TacticalUnit (Backend)
 ```python
@@ -1046,7 +1131,11 @@ class SimEnemyUnit(BaseModel):
 
 ### 7.2 Analysis Models
 
+Analysis models capture the results of AI and geometric analysis. These models translate raw AI output into structured, queryable data that can be displayed in the user interface or processed programmatically. The models are designed to be comprehensive, capturing not just conclusions but also the reasoning and intermediate calculations that led to those conclusions.
+
 #### SegmentCoverAnalysis
+
+The SegmentCoverAnalysis model represents the AI's assessment of a single route segment's exposure status. It captures whether the segment falls within an enemy vision cone, what type of cover (if any) exists, and provides a human-readable explanation of the assessment. This granular data enables the frontend to color-code route segments and display tooltips with specific cover information.
 ```python
 class SegmentCoverAnalysis(BaseModel):
     segment_index: int
@@ -1060,6 +1149,9 @@ class SegmentCoverAnalysis(BaseModel):
 ```
 
 #### TacticalScores
+
+The TacticalScores model quantifies route quality across four tactical dimensions. Each dimension is scored from 0 to 100, with higher values indicating better performance. The overall score is a weighted average of the individual dimensions, with weights calibrated based on typical tactical priorities. These scores enable direct comparison between route alternatives and provide a basis for the verdict classification.
+
 ```python
 class TacticalScores(BaseModel):
     stealth: float       # 0-100: How hidden is the approach
@@ -1070,6 +1162,9 @@ class TacticalScores(BaseModel):
 ```
 
 #### FlankingAnalysis
+
+Flanking represents a significant tactical advantage, allowing approach from an enemy's blind spot where detection probability is dramatically reduced. The FlankingAnalysis model captures whether the route achieves this advantage, the specific angle of approach relative to enemy facing direction, and the bonus points awarded to the overall rating. Approach angles greater than 90 degrees from enemy facing qualify as flanking, with rear approaches (around 180 degrees) earning the maximum bonus.
+
 ```python
 class FlankingAnalysis(BaseModel):
     is_flanking: bool      # Approaching from enemy blind spot?
@@ -1079,6 +1174,9 @@ class FlankingAnalysis(BaseModel):
 ```
 
 #### CoverBreakdown
+
+The CoverBreakdown model aggregates individual segment analyses into a route-level summary. It counts segments by cover status, calculates the percentage of the route that is protected, and lists the types of cover utilized. This aggregate view is visualized in the report modal as a horizontal bar chart, giving analysts an immediate sense of overall route protection without examining each segment individually.
+
 ```python
 class CoverBreakdown(BaseModel):
     total_segments: int
@@ -1098,7 +1196,13 @@ See [API Reference](#6-api-reference) for complete response structures.
 
 ## 8. AI Prompts & Customization
 
+The quality of GeoRoute's tactical analysis depends heavily on the prompts provided to the Gemini AI models. These prompts are essentially detailed instructions that tell the AI what to look for in satellite imagery, how to evaluate tactical situations, and what format to use for responses. Well-crafted prompts yield consistent, reliable results; poorly crafted prompts lead to unpredictable output that may not match backend expectations.
+
+Prompts are intentionally externalized to the configuration file rather than hard-coded in source code. This design enables iterative improvement based on operational feedback without requiring code deployments. Administrators can observe how the AI responds to various scenarios, identify areas where instructions are unclear or incomplete, and refine the prompts accordingly. This feedback loop is essential for calibrating the system to specific operational contexts and terrain types.
+
 ### 8.1 Prompt Location
+
+All AI prompts reside in the `georoute/config.yaml` file, which is read fresh for each API request. This means prompt changes take effect immediately without restarting the backend service. This hot-reload capability is invaluable during prompt development and tuning.
 
 All AI prompts are in `georoute/config.yaml`:
 
@@ -1110,6 +1214,10 @@ All AI prompts are in `georoute/config.yaml`:
 | `tactical_simulation_prompt` | Vision cone + cover analysis |
 
 ### 8.2 Route Drawing Prompt
+
+The route drawing prompt is perhaps the most sophisticated prompt in the system. It instructs Gemini 3 Pro (an image-generation capable model) to analyze a satellite image with marked start and end positions, then draw tactical infantry movement routes directly on the image. This is a complex task requiring the AI to understand terrain features, identify obstacles, recognize cover opportunities, and generate smooth, realistic paths that a soldier could actually walk.
+
+The prompt includes specific instructions about drawing style (smooth curves rather than straight lines), obstacle avoidance (never crossing through buildings), and route differentiation (balanced approach versus stealth approach). It also specifies the exact colors to use for each route type, ensuring visual consistency across analyses.
 
 Controls how Gemini draws routes on satellite imagery:
 
@@ -1131,6 +1239,12 @@ route_prompt: |
 - Obstacle avoidance rules
 
 ### 8.3 Tactical Simulation Prompt
+
+The tactical simulation prompt guides the AI through a complex multi-step analysis. First, it must understand the tactical scenario depicted in the annotated satellite image: where are the enemies, which direction are they facing (indicated by vision cones), and what is the proposed movement route. Then, for each segment of the route that passes through a vision cone, it must analyze whether terrain features (buildings, walls, vegetation) would actually block the enemy's line of sight.
+
+This analysis requires spatial reasoning that combines geometric understanding with visual interpretation. The prompt provides explicit rules for how to evaluate cover: buildings completely block line of sight, vegetation provides partial concealment, and open ground offers no protection. It also includes the scoring rubric, specifying exactly how many points to deduct for exposed segments and how much bonus to award for flanking approaches.
+
+The output format section of this prompt is critical. It specifies a JSON structure that the backend code expects to parse. Any deviation from this format can cause parsing failures, so modifications to the output format must be coordinated with corresponding backend code changes.
 
 Controls cover analysis and scoring:
 
@@ -1159,20 +1273,37 @@ tactical_simulation_prompt: |
 
 ### 8.4 Modifying Prompts
 
-1. Edit `georoute/config.yaml`
-2. Changes take effect on next API call (no restart needed)
-3. Test with `docker compose logs -f georoute-backend`
+Prompt modification is a powerful customization mechanism but requires careful attention to maintain system reliability. The AI interprets prompts probabilistically rather than deterministically, meaning small wording changes can have significant effects on output consistency. Testing is essential after any prompt modification.
 
-**Tips:**
-- Keep JSON output format consistent with backend models
-- Test scoring changes with known scenarios
-- Preserve required fields in JSON output
+The recommended workflow for prompt modification is:
+
+1. Edit `georoute/config.yaml` with your proposed changes
+2. Save the file (changes take effect on next API call without restart)
+3. Run several test analyses with known scenarios
+4. Compare AI output to expected results
+5. Iterate until output is satisfactory
+6. Monitor backend logs with `docker compose logs -f georoute-backend` for parsing errors
+
+**Critical considerations when modifying prompts:**
+- The JSON output format must remain consistent with backend Pydantic models. Changing field names, types, or structure in the prompt without corresponding backend changes will cause parsing failures.
+- Scoring deductions and bonuses directly affect verdict classification. Test with edge cases to ensure the scoring scale produces expected verdicts.
+- Preserve all required fields in JSON output. Missing fields may cause runtime errors or incorrect default values.
+- Be specific and unambiguous. AI models perform best with concrete instructions rather than vague guidance.
+- Include examples when introducing new concepts. The AI generalizes from examples effectively.
 
 ---
 
 ## 9. Frontend Architecture
 
+The GeoRoute frontend is built with React and TypeScript, providing a type-safe, component-based architecture that facilitates maintenance and extension. The user interface prioritizes the map as the central workspace while providing contextual controls and comprehensive reporting capabilities.
+
+React was chosen for its component model, which maps naturally to the distinct UI regions (sidebar, map, modals) and enables reuse of common elements. TypeScript adds compile-time type checking that catches many common programming errors before runtime, particularly valuable when working with the complex data structures returned by the API.
+
+The frontend uses Vite as its build tool, providing fast hot module replacement during development and optimized bundles for production. Tailwind CSS handles styling through utility classes, eliminating the need for custom CSS and ensuring visual consistency throughout the application.
+
 ### 9.1 Component Hierarchy
+
+The component hierarchy reflects the visual layout of the application. The top-level Index component orchestrates the major regions, passing state and callbacks to child components through props. Most components are purely presentational, receiving data from the centralized Zustand store and rendering it appropriately.
 
 ```
 App.tsx
@@ -1193,6 +1324,12 @@ App.tsx
 ```
 
 ### 9.2 State Management (Zustand)
+
+Zustand provides global state management with a minimal API that avoids the boilerplate associated with Redux while maintaining predictable state updates. The store is defined as a single hook (`useMission`) that components call to access and modify state.
+
+The state structure is organized into logical groups: current operational mode, unit positions for route mode, simulation entities and results, analysis history, and UI state such as loading indicators and modal visibility. Actions (functions that modify state) are co-located with the state they affect, making it easy to understand what operations are available.
+
+A key design decision is storing analysis results in history arrays rather than overwriting a single "current result" value. This enables the history tab functionality in the report modal, allowing analysts to compare multiple analyses without losing previous work. History entries include timestamps for chronological ordering.
 
 Global state is managed in `useMission.ts`:
 
@@ -1233,6 +1370,10 @@ interface MissionState {
 
 ### 9.3 API Layer (useApi.ts)
 
+The API layer abstracts HTTP communication with the backend, providing consistent error handling and progress tracking. All API calls flow through utility functions that handle JSON serialization, error extraction, and response parsing. This centralization ensures that error handling logic is consistent throughout the application and simplifies adding new API calls.
+
+The error handling logic specifically extracts the `detail` field from error responses, which is where FastAPI places structured error messages. This allows the backend to provide meaningful, user-friendly error messages that the frontend displays without modification. For example, when rate limits are exceeded, the backend returns a clear message about waiting and retrying, which the frontend presents directly to the user.
+
 HTTP and SSE handling:
 
 ```typescript
@@ -1259,6 +1400,12 @@ function subscribeToProgress(requestId: string, onProgress: Function) {
 
 ### 9.4 Map Layer (TacticalMap.tsx)
 
+The TacticalMap component integrates the Leaflet mapping library with React, managing the complex lifecycle of map initialization, layer management, and event handling. Leaflet operates outside React's virtual DOM, requiring careful coordination to prevent conflicts and ensure proper cleanup.
+
+The map uses a layered architecture where different types of content occupy separate layers that can be independently added, removed, and updated. Base tiles come from ESRI World Imagery. Unit markers are rendered as custom Leaflet markers with NATO symbology. Vision cones are drawn as polygon overlays. User-drawn routes appear as polylines. AI-generated route images are positioned as image overlays with precise geographic bounds.
+
+This layered approach enables complex visualizations while maintaining performance. Each layer can be updated independently without affecting others, and layers can be toggled on/off for different viewing needs.
+
 Leaflet integration with layers:
 
 | Layer | Purpose |
@@ -1274,7 +1421,15 @@ Leaflet integration with layers:
 
 ## 10. Backend Architecture
 
+The GeoRoute backend is built with FastAPI, a modern Python web framework that provides automatic API documentation, request validation through Pydantic models, and native support for asynchronous operations. The backend is designed as an orchestration layer that coordinates between external services (ESRI imagery, Google Gemini AI, Google Maps elevation) to fulfill tactical analysis requests.
+
+The codebase follows a modular architecture where each concern is handled by a dedicated module. API endpoints are thin handlers that validate input, delegate to processing logic, and format responses. Processing logic resides in pipeline classes that orchestrate multi-step operations. External service interactions are encapsulated in client classes that abstract away API specifics. This separation enables unit testing at each layer and simplifies swapping implementations.
+
+Asynchronous programming is used throughout, allowing the server to handle multiple concurrent requests without blocking. This is particularly important given the long latency of AI model calls, which can take 30 seconds or more. While one request waits for Gemini to respond, the server can process other requests, maximizing throughput.
+
 ### 10.1 Module Structure
+
+The module structure organizes code by functional area. The `api/` directory contains HTTP endpoint handlers. The `clients/` directory contains classes that interact with external services. The `models/` directory contains Pydantic data models used for validation and serialization. The `processing/` directory contains the business logic for tactical analysis. The `utils/` directory contains helper functions used across modules.
 
 ```
 georoute/
@@ -1299,7 +1454,11 @@ georoute/
 
 ### 10.2 Pipeline Classes
 
+Pipeline classes implement the multi-step workflows required for tactical analysis. They coordinate between imagery acquisition, AI processing, result parsing, and response assembly. The pipeline pattern provides a consistent structure for these operations while allowing each step to be independently implemented and tested.
+
 #### BalancedTacticalPipeline
+
+The BalancedTacticalPipeline class is the primary orchestration component. It is instantiated with configuration and client dependencies, then exposes methods for each type of analysis. The "balanced" name reflects its design philosophy of balancing AI analysis with geometric computation, using each approach where it is most effective.
 
 Main orchestration class:
 
@@ -1327,6 +1486,10 @@ class BalancedTacticalPipeline:
 
 #### GeminiImageRouteGenerator
 
+The GeminiImageRouteGenerator class encapsulates all interactions with Google's Gemini AI models. It handles both AI Studio and Vertex AI authentication paths, manages model selection from configuration, and provides methods for different types of AI operations (route drawing, tactical analysis, route evaluation).
+
+A key responsibility of this class is parsing AI responses. Gemini returns results as text that typically contains JSON embedded within markdown code blocks. The class extracts and validates this JSON, handling common variations in AI output format. When parsing fails, detailed error information is logged to facilitate debugging.
+
 Gemini AI interaction:
 
 ```python
@@ -1342,6 +1505,12 @@ class GeminiImageRouteGenerator:
 ```
 
 ### 10.3 Error Handling
+
+Error handling in GeoRoute serves two purposes: providing useful feedback to users and protecting internal system details from exposure. The error sanitization function translates technical exceptions (which may contain API keys, internal paths, or implementation details) into user-friendly messages with appropriate HTTP status codes.
+
+The sanitization logic examines exception messages for known patterns and maps them to appropriate responses. Rate limit errors (HTTP 429) tell users to wait and retry. Authentication failures (HTTP 401) indicate API key issues without revealing which key or service failed. Model availability errors (HTTP 503) suggest temporary unavailability without exposing model names. Unrecognized errors receive a generic message with HTTP 500, logged with full details for administrator review.
+
+This approach balances transparency with security. Users receive actionable information about what went wrong and what they can do, while system internals remain protected. Backend logs retain full error details for debugging.
 
 Errors are sanitized in `tactical.py`:
 
@@ -1368,7 +1537,13 @@ def _sanitize_error(e: Exception) -> tuple[str, int]:
 
 ## 11. Troubleshooting
 
+This section provides guidance for diagnosing and resolving common issues that may arise during GeoRoute operation. Problems generally fall into three categories: configuration issues (incorrect API keys, environment variables), external service issues (rate limits, service unavailability), and user operation issues (operating outside restrictions, insufficient zoom).
+
+The troubleshooting approach follows a standard methodology: identify symptoms, check relevant logs, isolate the cause, and apply the appropriate fix. For each common issue listed below, we provide the typical symptoms, likely causes, and recommended solutions.
+
 ### 11.1 Common Issues
+
+The issues below are presented in order of likelihood based on typical deployment experience. Most problems stem from API key configuration or rate limit exhaustion rather than system defects.
 
 #### "Outside Gulf Region" Error
 **Cause:** Coordinates are outside the GCC bounding box.
@@ -1421,6 +1596,10 @@ UI_PORT=8081
 
 ### 11.2 Log Analysis
 
+Container logs are the primary diagnostic resource for backend issues. The Docker Compose setup directs container output to standard Docker logging, accessible through the `docker compose logs` command. Backend logs include HTTP request information, pipeline stage progress, external API call results, and any errors encountered during processing.
+
+When troubleshooting, examine logs from the time period surrounding the reported issue. Look for error messages, stack traces, or warnings that indicate what went wrong. The `-f` flag enables following logs in real-time, useful when reproducing issues.
+
 ```bash
 # View all logs
 docker compose logs -f
@@ -1437,6 +1616,10 @@ docker compose logs | grep -i error
 
 ### 11.3 Health Checks
 
+Health checks verify that services are operational and responding correctly. The backend provides a dedicated health endpoint that returns a simple success response if the service is functioning. Docker Compose uses this endpoint for its health check configuration, ensuring that dependent services (like the frontend) only start after the backend is ready.
+
+For deeper diagnostics, checking container status reveals whether containers are running, restarting, or failed. Resource usage statistics help identify if containers are experiencing memory pressure or CPU saturation that might cause performance degradation.
+
 ```bash
 # Check backend health
 curl http://localhost:8001/api/health
@@ -1452,7 +1635,13 @@ docker stats
 
 ## 12. Extending the System
 
+GeoRoute is designed with extensibility in mind. The modular architecture, externalized configuration, and clear separation between layers facilitate adding new capabilities without disrupting existing functionality. This section provides guidance for common extension scenarios, illustrating the patterns and touch points involved.
+
+When extending the system, follow these principles: make changes incrementally and test at each step, maintain backward compatibility where possible, coordinate frontend and backend changes for new data structures, and document new features in this manual.
+
 ### 12.1 Adding New Enemy Types
+
+The enemy type system is designed to be extensible. Each enemy type has associated vision specifications (range and cone angle) that determine how vision cones are calculated and displayed. Adding a new enemy type requires updates in three locations: the backend enum and vision specs, and the frontend vision specs. The process is straightforward and does not require changes to core analysis logic.
 
 1. **Backend** (`models/tactical.py`):
 ```python
@@ -1488,6 +1677,10 @@ Add icon to `createSimEnemyIcon` function.
 
 ### 12.2 Adding New Scoring Metrics
 
+The scoring system can be extended with additional metrics to capture tactical dimensions not covered by the default set. For example, you might add a "speed" metric for time-critical missions or a "coordination" metric for multi-unit operations. Adding a metric requires model updates, prompt modifications to instruct the AI to calculate the metric, and frontend updates to display it.
+
+Note that adding metrics also requires adjusting the overall score calculation and potentially the verdict thresholds. Consider how the new metric interacts with existing metrics and whether weights should be rebalanced.
+
 1. **Backend** (`models/tactical.py`):
 ```python
 class TacticalScores(BaseModel):
@@ -1510,6 +1703,10 @@ Update `RadarChart` and `MiniGauge` components.
 
 ### 12.3 Adding New Analysis Modes
 
+New analysis modes enable entirely new types of tactical assessment. For example, you might add a "defensive position evaluation" mode for assessing fortification locations, or a "convoy route planning" mode optimized for vehicle movement. Adding a mode is the most substantial extension, requiring new endpoints, processing logic, data models, and UI components.
+
+The existing modes provide templates for implementation. Follow their patterns for request validation, progress reporting, and response formatting to maintain consistency. Consider how the new mode relates to existing modes and whether it should share UI space (as route and draw modes do in the sidebar) or require new interface elements.
+
 1. Create new endpoint in `tactical.py`
 2. Add pipeline method in `balanced_tactical_pipeline.py`
 3. Add request/response models in `models/tactical.py`
@@ -1518,6 +1715,10 @@ Update `RadarChart` and `MiniGauge` components.
 6. Connect to sidebar controls
 
 ### 12.4 Changing AI Models
+
+Model selection is configuration-driven, allowing you to switch between different Gemini models without code changes. This flexibility is valuable as Google releases new models with improved capabilities. The image model must support image generation (drawing on images), the text model handles structured analysis, and the analysis model performs vision-based tactical assessment.
+
+When switching models, be aware that different models may have different capabilities, latencies, and costs. Test thoroughly after any model change, as prompt effectiveness can vary between models. Some prompts that work well with one model may need adjustment for another.
 
 Edit `georoute/config.yaml`:
 ```yaml
@@ -1533,6 +1734,8 @@ No code changes required - models are loaded from config.
 
 ## Appendix A: Glossary
 
+This glossary defines technical and tactical terms used throughout the manual. Understanding these terms ensures clear communication and accurate interpretation of system outputs.
+
 | Term | Definition |
 |------|------------|
 | **Cover** | Physical obstruction that blocks line of sight |
@@ -1545,14 +1748,22 @@ No code changes required - models are loaded from config.
 
 ## Appendix B: Keyboard Shortcuts
 
-Currently, all interactions are mouse-based. No keyboard shortcuts are implemented.
+The current version of GeoRoute relies on mouse-based interactions through the map interface. Keyboard shortcuts have not been implemented in this release but may be added in future versions based on user feedback and operational requirements. Priority shortcut candidates include mode switching, unit type selection, and report navigation.
 
 ## Appendix C: Version History
 
+This section documents significant releases and their major changes. Minor updates and bug fixes may not be listed individually but are captured in the git commit history.
+
 | Version | Date | Changes |
 |---------|------|---------|
-| 1.0 | Feb 2026 | Initial release with route generation, evaluation, simulation |
+| 1.0 | Feb 2026 | Initial release with AI-powered route generation, user route evaluation, and tactical simulation with vision cone modeling. Includes Vertex AI support, error sanitization, and comprehensive reporting. |
 
 ---
 
-*This manual is maintained alongside the GeoRoute codebase. For the latest version, see the repository.*
+## Closing Notes
+
+GeoRoute represents the application of cutting-edge AI technology to the longstanding challenge of tactical route planning. While the system provides powerful analytical capabilities, it is designed to augment rather than replace human judgment. The verdicts, scores, and recommendations should be considered as inputs to decision-making, not as directives.
+
+Feedback from operational use is essential for continued improvement. As you work with the system, note any scenarios where the analysis seems inconsistent or where additional capabilities would be valuable. This feedback informs prompt refinement, feature prioritization, and overall system evolution.
+
+*This manual is maintained alongside the GeoRoute codebase. For questions, issues, or contributions, see the project repository.*
