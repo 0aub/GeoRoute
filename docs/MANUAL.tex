@@ -1361,6 +1361,89 @@ def _sanitize_error(e: Exception) -> tuple[str, int]:
     return "An error occurred during analysis.", 500
 \end{lstlisting}
 
+\section{NGINX Reverse Proxy}
+
+Version 2.0 introduces NGINX as the default entry point for all traffic. This production-grade reverse proxy provides several critical capabilities that improve security, performance, and scalability.
+
+\subsection{Why NGINX?}
+
+Direct exposure of application services to the internet introduces unnecessary risk. NGINX serves as a protective layer that:
+
+\begin{itemize}
+    \item \textbf{Terminates external connections} before they reach application code
+    \item \textbf{Enforces rate limits} to prevent abuse and denial-of-service attempts
+    \item \textbf{Compresses responses} to reduce bandwidth usage
+    \item \textbf{Adds security headers} to protect against common web vulnerabilities
+    \item \textbf{Load balances} across multiple backend instances
+\end{itemize}
+
+\subsection{Configuration}
+
+The NGINX configuration resides in \texttt{nginx/nginx.conf}. Key settings include:
+
+\textbf{Rate Limiting:}
+\begin{lstlisting}[style=bash]
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+\end{lstlisting}
+
+API endpoints are limited to 10 requests per second per IP address, with a burst allowance of 20 requests. This prevents individual users from overwhelming the AI processing pipeline.
+
+\textbf{Load Balancing with Sticky Sessions:}
+\begin{lstlisting}[style=bash]
+upstream backend {
+    ip_hash;  # Sticky sessions - same client always goes to same backend
+    server georoute-backend:9001;
+    keepalive 32;
+}
+\end{lstlisting}
+
+When multiple backend replicas are running, NGINX uses IP hash for sticky sessions. This ensures the same client always routes to the same backend, which is required for SSE progress updates to work correctly (progress state is stored in-memory per backend instance).
+
+\textbf{AI Operation Timeouts:}
+\begin{lstlisting}[style=bash]
+proxy_read_timeout 180s;
+proxy_connect_timeout 60s;
+\end{lstlisting}
+
+AI operations can take up to 3 minutes. Standard timeout values would terminate these requests prematurely.
+
+\textbf{SSE Support:}
+\begin{lstlisting}[style=bash]
+proxy_buffering off;
+proxy_cache off;
+chunked_transfer_encoding on;
+\end{lstlisting}
+
+Server-Sent Events require special handling to maintain persistent connections for progress streaming.
+
+\subsection{Scaling Backend Replicas}
+
+To handle more concurrent users, scale the backend service:
+
+\begin{lstlisting}[style=bash]
+# Scale to 3 replicas
+docker compose up -d --scale georoute-backend=3
+
+# Scale back to 1
+docker compose up -d --scale georoute-backend=1
+\end{lstlisting}
+
+NGINX automatically discovers new replicas through Docker's DNS resolution and distributes load accordingly.
+
+\textbf{When to scale:}
+\begin{itemize}
+    \item Multiple analysts working simultaneously
+    \item AI operations causing request queuing
+    \item Response times increasing under load
+\end{itemize}
+
+\textbf{Scaling limits:}
+\begin{itemize}
+    \item Gemini API rate limits remain the true bottleneck ($\sim$60 req/min)
+    \item Each replica consumes $\sim$500MB RAM
+    \item More than 5 replicas rarely provides benefit
+\end{itemize}
+
 % ============================================================================
 % CHAPTER 11: TROUBLESHOOTING
 % ============================================================================
