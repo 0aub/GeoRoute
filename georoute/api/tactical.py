@@ -27,6 +27,61 @@ router = APIRouter(prefix="/api", tags=["tactical"])
 _progress_state: dict[str, dict] = {}
 
 
+def _sanitize_error(error: Exception) -> tuple[str, int]:
+    """Convert raw exception into a clean user-facing message and proper HTTP status code.
+    Returns (message, status_code)."""
+    import re
+    raw = str(error)
+
+    # Rate limit / quota exhaustion
+    if "RESOURCE_EXHAUSTED" in raw or "quota" in raw.lower() or "rate limit" in raw.lower():
+        return "AI service rate limit exceeded. Please wait a moment and try again.", 429
+
+    # Auth / API key issues
+    if "PERMISSION_DENIED" in raw or "API_KEY_INVALID" in raw or "401" in raw or "403" in raw:
+        return "AI service authentication failed. Please check the API key configuration.", 401
+
+    # Model not found / unavailable
+    if "NOT_FOUND" in raw and ("model" in raw.lower() or "gemini" in raw.lower()):
+        return "AI model is currently unavailable. Please try again later.", 503
+
+    # Network / timeout
+    if "timeout" in raw.lower() or "timed out" in raw.lower():
+        return "AI service request timed out. Please try again.", 504
+    if "connection" in raw.lower() and ("refused" in raw.lower() or "error" in raw.lower()):
+        return "Could not connect to AI service. Please check your network.", 502
+
+    # Content safety / blocked
+    if "SAFETY" in raw or "blocked" in raw.lower():
+        return "AI request was blocked by content safety filters. Please adjust the scenario.", 422
+
+    # Satellite imagery failures
+    if "satellite" in raw.lower() or "imagery" in raw.lower() or "ESRI" in raw:
+        return "Failed to fetch satellite imagery. Please try a different area or zoom level.", 502
+
+    # Image generation failures
+    if "did not return an image" in raw.lower():
+        return "AI did not generate an image. Please try again.", 502
+
+    # Geographic validation (pass through as-is, already user-friendly)
+    if "Geographic restriction" in raw or "Gulf Region" in raw:
+        return raw, 400
+
+    # Waypoint / bounds validation (pass through)
+    if "waypoint" in raw.lower() or "bounds" in raw.lower():
+        return raw, 400
+
+    # Fallback: strip any internal references
+    sanitized = raw
+    sanitized = re.sub(r'https?://\S+', '', sanitized)
+    sanitized = re.sub(r'gemini[-\w]*', 'AI model', sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(r'generativelanguage\.googleapis\.com/\S+', '', sanitized)
+    sanitized = re.sub(r'\s{2,}', ' ', sanitized).strip()
+    sanitized = sanitized.rstrip('.,: ')
+
+    return (sanitized if sanitized else "An unexpected error occurred. Please try again."), 500
+
+
 # Dependency injection - Balanced pipeline: respects buildings, reasonably fast
 def get_tactical_pipeline() -> BalancedTacticalPipeline:
     """Create balanced tactical pipeline - building avoidance with good speed."""
@@ -109,20 +164,20 @@ async def plan_tactical_attack(
     Returns:
         Complete tactical plan with 3 classified routes
     """
+    progress_id = request.request_id or 'default'
     try:
-        # Use client-provided request_id for progress tracking
-        progress_id = request.request_id or 'default'
-
         # Set progress callback for real-time updates
         pipeline.set_progress_callback(
             lambda stage, progress, msg: update_progress(progress_id, stage, progress, msg)
         )
         response = await pipeline.plan_tactical_attack(request)
         return response
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Tactical planning failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        msg, status = _sanitize_error(e)
+        update_progress(progress_id, "error", 0, msg)
+        raise HTTPException(status_code=status, detail=msg)
 
 
 @router.post("/evaluate-route", response_model=RouteEvaluationResponse)
@@ -143,20 +198,20 @@ async def evaluate_route(
     Returns:
         Route evaluation with annotated image and suggested positions
     """
+    progress_id = request.request_id or 'default'
     try:
-        # Use client-provided request_id for progress tracking
-        progress_id = request.request_id or 'default'
-
         # Set progress callback for real-time updates
         pipeline.set_progress_callback(
             lambda stage, progress, msg: update_progress(progress_id, stage, progress, msg)
         )
         response = await pipeline.evaluate_user_route(request)
         return response
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Route evaluation failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        msg, status = _sanitize_error(e)
+        update_progress(progress_id, "error", 0, msg)
+        raise HTTPException(status_code=status, detail=msg)
 
 
 @router.post("/analyze-tactical-simulation", response_model=TacticalSimulationResponse)
@@ -177,17 +232,17 @@ async def analyze_tactical_simulation(
     Returns:
         Tactical simulation analysis with annotated image, weak spots, and strategy rating
     """
+    progress_id = request.request_id or 'default'
     try:
-        # Use client-provided request_id for progress tracking
-        progress_id = request.request_id or 'default'
-
         # Set progress callback for real-time updates
         pipeline.set_progress_callback(
             lambda stage, progress, msg: update_progress(progress_id, stage, progress, msg)
         )
         response = await pipeline.analyze_tactical_simulation(request)
         return response
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Tactical simulation analysis failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        msg, status = _sanitize_error(e)
+        update_progress(progress_id, "error", 0, msg)
+        raise HTTPException(status_code=status, detail=msg)

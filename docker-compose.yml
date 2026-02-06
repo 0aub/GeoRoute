@@ -15,9 +15,15 @@ services:
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - CORS_ORIGINS=${CORS_ORIGINS}
       - RELOAD=true
+      # Vertex AI settings (optional)
+      - USE_VERTEX_AI=${USE_VERTEX_AI:-false}
+      - VERTEX_LOCATION=${VERTEX_LOCATION:-us-central1}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/service-account.json
     volumes:
       # Mount source code for hot-reload (no rebuild needed)
       - ./georoute:/app/georoute:ro
+      # Mount service account for Vertex AI (optional - only needed if USE_VERTEX_AI=true)
+      - ./service-account.json:/app/service-account.json:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${BACKEND_PORT}/api/health"]
       interval: 30s

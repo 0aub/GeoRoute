@@ -10,6 +10,7 @@ requests>=2.31.0
 # Google APIs
 google-genai>=0.4.0
 google-generativeai>=0.8.0
+google-cloud-aiplatform>=1.38.0  # Vertex AI SDK
 
 # Environment
 python-dotenv>=1.0.0

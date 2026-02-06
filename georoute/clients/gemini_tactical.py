@@ -41,8 +41,29 @@ class TacticalGeminiClient:
     - Stage 3-4 (text reasoning): gemini-2.5-flash-lite (fast, cost-effective)
     """
 
-    def __init__(self, api_key: str, project_id: str):
-        genai.configure(api_key=api_key)
+    def __init__(self, api_key: str = None, project_id: str = None, use_vertex: bool = False, location: str = "us-central1"):
+        """
+        Initialize the tactical Gemini client.
+
+        Args:
+            api_key: AI Studio API key (if not using Vertex)
+            project_id: Google Cloud project ID
+            use_vertex: If True, use Vertex AI with ADC auth
+            location: Vertex AI region
+        """
+        self.use_vertex = use_vertex
+        self.project_id = project_id
+
+        if use_vertex:
+            # Use Vertex AI - requires ADC or service account
+            import vertexai
+            from vertexai.generative_models import GenerativeModel
+            vertexai.init(project=project_id, location=location)
+            print(f"[GeminiTactical] Using Vertex AI (project={project_id}, location={location})")
+        else:
+            # Use AI Studio with API key
+            genai.configure(api_key=api_key)
+            print(f"[GeminiTactical] Using AI Studio API key")
 
         # Load text model from centralized config.yaml
         text_model_name = get_yaml_setting("gemini", "text_model")
@@ -51,7 +72,11 @@ class TacticalGeminiClient:
 
         # Initialize the text model
         try:
-            self.text_model = genai.GenerativeModel(text_model_name)
+            if use_vertex:
+                from vertexai.generative_models import GenerativeModel
+                self.text_model = GenerativeModel(text_model_name)
+            else:
+                self.text_model = genai.GenerativeModel(text_model_name)
             print(f"[GeminiTactical] Text model: {text_model_name}")
         except Exception as e:
             raise ValueError(f"Failed to initialize {text_model_name}: {e}")
@@ -60,7 +85,6 @@ class TacticalGeminiClient:
         self.model = self.text_model
         self.complex_model = self.text_model  # Alias for compatibility
         self.simple_model = self.text_model   # Alias for compatibility
-        self.project_id = project_id
         self.gemini_requests: list[GeminiRequest] = []
 
     def _log_request(

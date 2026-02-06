@@ -64,14 +64,31 @@ class BalancedTacticalPipeline:
         # Initialize clients
         self.config = config
         self.gmaps = GoogleMapsClient(config.google_maps_api_key)
-        self.gemini = TacticalGeminiClient(config.gemini_api_key, config.google_cloud_project)
+
+        # Initialize Gemini clients with Vertex AI support
+        self.gemini = TacticalGeminiClient(
+            api_key=config.gemini_api_key,
+            project_id=config.google_cloud_project,
+            use_vertex=config.use_vertex_ai,
+            location=config.vertex_location,
+        )
+
         self.esri = ESRIImageryClient()  # ESRI for satellite imagery (matches UI)
         self._progress_callback: Optional[Callable[[str, int, str], None]] = None
         self._last_image_bounds = None  # Track actual satellite image bounds
 
         # Initialize Gemini Image route generator
-        self.route_generator = GeminiImageRouteGenerator(api_key=config.gemini_api_key)
-        print("[BalancedPipeline] Using Gemini 3 Pro Image for direct route drawing")
+        self.route_generator = GeminiImageRouteGenerator(
+            api_key=config.gemini_api_key,
+            use_vertex=config.use_vertex_ai,
+            project_id=config.google_cloud_project,
+            location=config.vertex_location,
+        )
+
+        if config.use_vertex_ai:
+            print(f"[BalancedPipeline] Using Vertex AI (project={config.google_cloud_project}, location={config.vertex_location})")
+        else:
+            print("[BalancedPipeline] Using AI Studio API key")
         print("[BalancedPipeline] Using ESRI World Imagery (matches Leaflet UI)")
 
     async def test_all_apis(self) -> dict[str, bool]:

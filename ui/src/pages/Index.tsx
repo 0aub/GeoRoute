@@ -158,15 +158,9 @@ const RoutePlanner = () => {
       }
     } catch (error: any) {
       console.error('[TacticalPlan] Error:', error);
-      toast({
-        title: 'Planning Failed',
-        description: error.message || 'Failed to generate tactical plan. Please try again.',
-        variant: 'destructive',
-      });
+      // Show error in the loader overlay (user dismisses it)
+      setProgress({ stage: 'error', progress: 0, message: error.message || 'Failed to generate tactical plan.', timestamp: '' });
     } finally {
-      setIsPlanning(false);
-      setProgress(null);
-
       // Cleanup SSE subscription
       if (unsubscribeRef.current) {
         unsubscribeRef.current();
@@ -267,15 +261,9 @@ const RoutePlanner = () => {
       }
     } catch (error: any) {
       console.error('[TacticalSimulation] Error:', error);
-      toast({
-        title: 'Analysis Failed',
-        description: error.message || 'Failed to analyze tactical scenario. Please try again.',
-        variant: 'destructive',
-      });
+      // Show error in the loader overlay (user dismisses it)
+      setProgress({ stage: 'error', progress: 0, message: error.message || 'Failed to analyze tactical scenario.', timestamp: '' });
     } finally {
-      setIsEvaluating(false);
-      setProgress(null);
-
       // Cleanup SSE subscription
       if (unsubscribeRef.current) {
         unsubscribeRef.current();
@@ -303,7 +291,18 @@ const RoutePlanner = () => {
       </div>
 
       {/* Loading Animation - Full Screen Overlay with REAL progress */}
-      {(isPlanning || isEvaluating) && <PlanningLoader progress={progress} advancedAnalytics={advancedAnalytics} isSimulation={isEvaluating} />}
+      {(isPlanning || isEvaluating) && (
+        <PlanningLoader
+          progress={progress}
+          advancedAnalytics={advancedAnalytics}
+          isSimulation={isEvaluating}
+          onDismiss={() => {
+            setIsPlanning(false);
+            setIsEvaluating(false);
+            setProgress(null);
+          }}
+        />
+      )}
     </div>
   );
 };

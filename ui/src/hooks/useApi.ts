@@ -32,8 +32,10 @@ const fetchWithError = async <T>(url: string, options?: RequestInit): Promise<T>
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Request failed' }));
-    throw new Error(error.message || `HTTP ${response.status}`);
+    const error = await response.json().catch(() => ({}));
+    // FastAPI returns { detail: "..." }, other APIs may return { message: "..." }
+    const message = error.detail || error.message || `Request failed with status ${response.status}`;
+    throw new Error(message);
   }
 
   return response.json();

@@ -50,16 +50,31 @@ class GeminiImageRouteGenerator:
     The output is the image itself - no waypoints needed.
     """
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str = None, use_vertex: bool = False, project_id: str = None, location: str = "us-central1"):
         """
         Initialize the Gemini Image Route Generator.
 
         Args:
-            api_key: Google AI API key
+            api_key: Google AI Studio API key (if not using Vertex)
+            use_vertex: If True, use Vertex AI with ADC/service account auth
+            project_id: Google Cloud project ID (required for Vertex)
+            location: Vertex AI region (default: us-central1)
         """
-        self.client = genai.Client(api_key=api_key)
+        if use_vertex:
+            # Use Vertex AI with Application Default Credentials
+            self.client = genai.Client(
+                vertexai=True,
+                project=project_id,
+                location=location,
+            )
+            print(f"[GeminiImageRoute] Using Vertex AI (project={project_id}, location={location})")
+        else:
+            # Use AI Studio with API key
+            self.client = genai.Client(api_key=api_key)
+            print(f"[GeminiImageRoute] Using AI Studio API key")
+
         # Separate models for different tasks
-        self.image_model = get_yaml_setting("gemini", "image_model", default="gemini-3-pro-image-preview")
+        self.image_model = get_yaml_setting("gemini", "image_model", default="gemini-2.0-flash-exp")
         self.text_model = get_yaml_setting("gemini", "text_model", default="gemini-2.5-flash")
         print(f"[GeminiImageRoute] Image model: {self.image_model}")
         print(f"[GeminiImageRoute] Text model: {self.text_model}")

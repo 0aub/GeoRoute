@@ -39,9 +39,10 @@ interface PlanningLoaderProps {
   progress: ProgressUpdate | null;
   advancedAnalytics?: boolean;
   isSimulation?: boolean;
+  onDismiss?: () => void;
 }
 
-export const PlanningLoader = ({ progress, advancedAnalytics = false, isSimulation = false }: PlanningLoaderProps) => {
+export const PlanningLoader = ({ progress, advancedAnalytics = false, isSimulation = false, onDismiss }: PlanningLoaderProps) => {
   // Pick stage set based on mode
   const baseStages = isSimulation ? SIMULATION_STAGES : STAGES;
   // Determine which stages to show based on advanced analytics
@@ -270,14 +271,21 @@ export const PlanningLoader = ({ progress, advancedAnalytics = false, isSimulati
           })}
         </div>
 
-        {/* Error message only - no INTEL tips */}
+        {/* Error message with dismiss button */}
         {isError && (
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 max-w-md">
-            <div className="backdrop-blur-sm rounded-lg p-4 border bg-red-900/30 border-red-500/30">
+          <div className="max-w-md w-full">
+            <div className="backdrop-blur-sm rounded-lg p-5 border bg-red-900/30 border-red-500/30 space-y-4">
               <p className="text-sm text-gray-300 text-center">
-                <span className="font-semibold text-red-500">ERROR: </span>
                 {message}
               </p>
+              {onDismiss && (
+                <button
+                  onClick={onDismiss}
+                  className="w-full py-2.5 px-4 rounded-md bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors"
+                >
+                  Dismiss
+                </button>
+              )}
             </div>
           </div>
         )}
