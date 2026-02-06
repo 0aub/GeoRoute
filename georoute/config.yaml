@@ -10,9 +10,12 @@ route_generation:
 
 # Gemini AI Models
 gemini:
-  image_model: "gemini-3-pro-image-preview"  # For drawing routes on satellite images (Nano Banana Pro)
+  # Image model for drawing routes on satellite images
+  # - gemini-2.5-flash-image: GA on Vertex AI (recommended)
+  # - gemini-3-pro-image-preview: requires preview access
+  image_model: "gemini-2.5-flash-image"
   text_model: "gemini-2.5-flash"             # For basic text generation
-  analysis_model: "gemini-3-flash-preview"   # For tactical analysis with vision (Gemini 3 Flash)
+  analysis_model: "gemini-2.5-flash"         # For tactical analysis with vision
 
 # Route Generation Prompt
 route_prompt: |
