@@ -21,25 +21,25 @@ const createUnitIcon = (isFriendly: boolean) => {
       className: 'custom-unit-marker',
       html: `
         <div style="
-          width: 50px;
-          height: 40px;
+          width: 40px;
+          height: 32px;
           background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-          border: 4px solid white;
-          border-radius: 6px;
+          border: 3px solid white;
+          border-radius: 5px;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+          box-shadow: 0 3px 12px rgba(0,0,0,0.5);
           cursor: move;
         ">
-          <svg width="28" height="24" viewBox="0 0 28 24" fill="none">
+          <svg width="22" height="18" viewBox="0 0 28 24" fill="none">
             <line x1="6" y1="20" x2="14" y2="4" stroke="white" stroke-width="4" stroke-linecap="round"/>
             <line x1="22" y1="20" x2="14" y2="4" stroke="white" stroke-width="4" stroke-linecap="round"/>
           </svg>
         </div>
       `,
-      iconSize: [50, 40],
-      iconAnchor: [25, 20],
+      iconSize: [40, 32],
+      iconAnchor: [20, 16],
     });
   } else {
     // NATO Hostile Unit: Red diamond shape
@@ -47,24 +47,24 @@ const createUnitIcon = (isFriendly: boolean) => {
       className: 'custom-unit-marker',
       html: `
         <div style="
-          width: 44px;
-          height: 44px;
+          width: 36px;
+          height: 36px;
           background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-          border: 4px solid white;
+          border: 3px solid white;
           transform: rotate(45deg);
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+          box-shadow: 0 3px 12px rgba(0,0,0,0.5);
           cursor: move;
         ">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style="transform: rotate(-45deg);">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style="transform: rotate(-45deg);">
             <circle cx="10" cy="10" r="5" fill="white"/>
           </svg>
         </div>
       `,
-      iconSize: [44, 44],
-      iconAnchor: [22, 22],
+      iconSize: [36, 36],
+      iconAnchor: [18, 18],
     });
   }
 };
@@ -97,8 +97,8 @@ const createSimEnemyIcon = (type: string, facing: number) => {
     className: 'sim-enemy-marker',
     html: `
       <div style="
-        width: 44px;
-        height: 44px;
+        width: 36px;
+        height: 36px;
         background: linear-gradient(135deg, ${color} 0%, ${color}dd 100%);
         border: 3px solid white;
         border-radius: 50%;
@@ -111,20 +111,20 @@ const createSimEnemyIcon = (type: string, facing: number) => {
       ">
         <div style="
           position: absolute;
-          top: -12px;
+          top: -10px;
           left: 50%;
           transform: translateX(-50%) rotate(${facing}deg);
-          transform-origin: center 34px;
+          transform-origin: center 28px;
         ">
-          <svg width="14" height="16" viewBox="0 0 14 16">
+          <svg width="12" height="14" viewBox="0 0 14 16">
             <polygon points="7,0 14,14 7,10 0,14" style="fill:#ffffff;stroke:${color};stroke-width:1.5"/>
           </svg>
         </div>
         ${symbols[type] || symbols.rifleman}
       </div>
     `,
-    iconSize: [44, 44],
-    iconAnchor: [22, 22],
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
   });
 };
 
@@ -153,11 +153,11 @@ const createSimFriendlyIcon = (type: string) => {
     className: 'sim-friendly-marker',
     html: `
       <div style="
-        width: 44px;
-        height: 36px;
+        width: 36px;
+        height: 30px;
         background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
         border: 3px solid white;
-        border-radius: 6px;
+        border-radius: 5px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -167,8 +167,8 @@ const createSimFriendlyIcon = (type: string) => {
         ${symbols[type] || symbols.rifleman}
       </div>
     `,
-    iconSize: [44, 36],
-    iconAnchor: [22, 18],
+    iconSize: [36, 30],
+    iconAnchor: [18, 15],
   });
 };
 
@@ -218,14 +218,13 @@ const riskColorMap: Record<RiskLevel, string> = {
   critical: '#DC2626',  // Clear Red - danger
 };
 
-// Tile layers - Using ESRI World Imagery for interactive display (free, no API key)
-// Backend uses Google Maps Static API for AI processing (better high-zoom coverage)
+// Tile layers - Using ESRI World Imagery (max zoom 17 for full coverage)
 const tileLayers = {
   satellite: L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     {
-      attribution: 'Tiles © Esri | AI imagery © Google',
-      maxZoom: 19,
+      attribution: 'Tiles © Esri',
+      maxZoom: 17,
     }
   ),
   terrain: L.tileLayer(
@@ -328,7 +327,7 @@ export const TacticalMap = () => {
       zoom: 7,
       zoomControl: false,
       minZoom: 7,
-      maxZoom: 19,
+      maxZoom: 17,  // ESRI max zoom for full coverage
       maxBounds: gulfBounds,
       maxBoundsViscosity: 1.0, // Prevent panning outside bounds
     });
@@ -729,17 +728,17 @@ export const TacticalMap = () => {
     // Don't render if no waypoints
     if (drawnWaypoints.length === 0) return;
 
-    // Create waypoint markers (larger, more visible)
+    // Create waypoint markers
     drawnWaypoints.forEach((wp, index) => {
       // All waypoints are blue (friendly color) - user's route
       let color = '#2563eb';
-      let radius = 8;
+      let radius = 6;
       if (index === 0) {
         color = '#22c55e'; // Green for start
-        radius = 10;
+        radius = 8;
       } else if (index === drawnWaypoints.length - 1) {
         color = '#2563eb'; // Blue for end (friendly)
-        radius = 10;
+        radius = 8;
       }
 
       const marker = L.circleMarker([wp.lat, wp.lng], {

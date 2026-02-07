@@ -92,9 +92,9 @@ class ESRIImageryClient:
         max_meters = max(lat_meters, lon_meters)
 
         # Calculate optimal zoom level
-        # Start with zoom 19 (highest quality ~0.3m/pixel) for small areas
-        # For larger areas, use lower zoom to keep tile count reasonable
-        zoom = 19
+        # Start with zoom 17 (max for ESRI coverage in all regions)
+        # Higher zoom levels may show "map data not yet available" in some areas
+        zoom = 17
 
         # Get tile coordinates for corners at this zoom
         nw_tile = self._lat_lon_to_tile(bounds['north'], bounds['west'], zoom)
@@ -113,7 +113,7 @@ class ESRIImageryClient:
         # Allow up to 36 tiles (6x6) for better image quality
         # Only reduce zoom if we exceed this - higher zoom = sharper image
         max_tiles = 36
-        while total_tiles > max_tiles and zoom > 18:
+        while total_tiles > max_tiles and zoom > 14:
             zoom -= 1
             nw_tile = self._lat_lon_to_tile(bounds['north'], bounds['west'], zoom)
             se_tile = self._lat_lon_to_tile(bounds['south'], bounds['east'], zoom)

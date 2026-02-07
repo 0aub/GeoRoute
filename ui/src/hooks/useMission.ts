@@ -49,10 +49,11 @@ export interface DrawnWaypoint {
 export type SimEnemyType = 'sniper' | 'rifleman' | 'observer';
 
 // Vision cone specs per enemy type (in meters and degrees)
+// Scaled for zoom 17 visibility - realistic tactical ranges
 export const ENEMY_VISION_SPECS: Record<SimEnemyType, { distance: number; angle: number; color: string }> = {
-  sniper: { distance: 500, angle: 30, color: '#ef4444' },    // Red - long range, narrow
-  rifleman: { distance: 100, angle: 60, color: '#ef4444' },  // Red - 100m effective range, wider FOV
-  observer: { distance: 400, angle: 45, color: '#ef4444' },  // Red - long range, medium
+  sniper: { distance: 250, angle: 25, color: '#ef4444' },    // Red - precision, narrow FOV
+  rifleman: { distance: 75, angle: 60, color: '#ef4444' },   // Red - close combat range
+  observer: { distance: 200, angle: 45, color: '#ef4444' },  // Red - observation range
 };
 
 // Simulation enemy unit

@@ -20,6 +20,7 @@ from typing import Optional, Callable
 
 from ..clients.gemini_tactical import TacticalGeminiClient
 from ..clients.google_maps import GoogleMapsClient
+from ..clients.esri_imagery import ESRIImageryClient
 from ..models.tactical import (
     TacticalPlanRequest,
     TacticalPlanResponse,
@@ -63,6 +64,7 @@ class BalancedTacticalPipeline:
         # Initialize clients
         self.config = config
         self.gmaps = GoogleMapsClient(config.google_maps_api_key)
+        self.esri = ESRIImageryClient()  # Fallback for when Google Maps fails
 
         # Initialize Gemini clients with Vertex AI support
         self.gemini = TacticalGeminiClient(
@@ -87,7 +89,7 @@ class BalancedTacticalPipeline:
             print(f"[BalancedPipeline] Using Vertex AI (project={config.google_cloud_project}, location={config.vertex_location})")
         else:
             print("[BalancedPipeline] Using AI Studio API key")
-        print("[BalancedPipeline] Using Google Maps Static API for satellite imagery")
+        print("[BalancedPipeline] Satellite imagery: ESRI World Imagery (max zoom 17)")
 
     async def test_all_apis(self) -> dict[str, bool]:
         """Test connectivity to all APIs."""
@@ -157,10 +159,9 @@ class BalancedTacticalPipeline:
         return zoom
 
     async def _get_satellite_image_fast(self, bounds: dict, zoom: int = 14) -> tuple[Optional[str], dict]:
-        """Get satellite image from Google Maps that covers the entire bounds area.
+        """Get satellite image from ESRI World Imagery.
 
-        Uses Google Maps Static API for consistent, high-quality imagery
-        with excellent global coverage (especially at high zoom levels).
+        Uses ESRI with max zoom 17 to ensure coverage in all regions.
 
         Returns:
             Tuple of (base64_image, actual_bounds) where actual_bounds is the
@@ -177,30 +178,24 @@ class BalancedTacticalPipeline:
         lon_meters = lon_span * 111000 * math.cos(math.radians(center_lat))
         max_span = max(lat_meters, lon_meters)
 
-        # No additional padding - frontend already adds sufficient padding
-        # This ensures the image is tightly focused on the route
-        padded_bounds = bounds.copy()
-
         print(f"[BalancedPipeline] Bounds span: {max_span:.0f}m")
-        print(f"[BalancedPipeline] Requested bounds: N={padded_bounds['north']:.6f}, S={padded_bounds['south']:.6f}, E={padded_bounds['east']:.6f}, W={padded_bounds['west']:.6f}")
+        print(f"[BalancedPipeline] Requested bounds: N={bounds['north']:.6f}, S={bounds['south']:.6f}, E={bounds['east']:.6f}, W={bounds['west']:.6f}")
 
         try:
-            # Google Maps Static API returns (image_bytes, actual_bounds)
-            # Use 1280x1280 for better image quality
-            image_bytes, actual_bounds = await self.gmaps.get_satellite_image_by_bounds(
-                bounds=padded_bounds,
+            image_bytes, actual_bounds = await self.esri.get_satellite_image(
+                bounds=bounds,
                 width=1280,
                 height=1280
             )
             if image_bytes:
-                # Store actual bounds for overlay positioning
                 self._last_image_bounds = actual_bounds
-                print(f"[BalancedPipeline] Actual image bounds: N={actual_bounds['north']:.6f}, S={actual_bounds['south']:.6f}, E={actual_bounds['east']:.6f}, W={actual_bounds['west']:.6f}")
+                print(f"[BalancedPipeline] ESRI image: N={actual_bounds['north']:.6f}, S={actual_bounds['south']:.6f}")
                 return base64.b64encode(image_bytes).decode("utf-8"), actual_bounds
         except Exception as e:
-            print(f"[BalancedPipeline] Google Maps satellite image failed: {e}")
+            print(f"[BalancedPipeline] ESRI failed: {e}")
             import traceback
             traceback.print_exc()
+
         return None, {}
 
     async def _analyze_routes_combined(
