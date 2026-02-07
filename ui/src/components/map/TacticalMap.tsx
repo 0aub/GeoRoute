@@ -218,12 +218,13 @@ const riskColorMap: Record<RiskLevel, string> = {
   critical: '#DC2626',  // Clear Red - danger
 };
 
-// Tile layers - Using ESRI World Imagery (matches backend satellite fetch)
+// Tile layers - Using ESRI World Imagery for interactive display (free, no API key)
+// Backend uses Google Maps Static API for AI processing (better high-zoom coverage)
 const tileLayers = {
   satellite: L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     {
-      attribution: 'Tiles © Esri',
+      attribution: 'Tiles © Esri | AI imagery © Google',
       maxZoom: 19,
     }
   ),

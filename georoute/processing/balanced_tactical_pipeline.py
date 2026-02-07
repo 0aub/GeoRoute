@@ -50,7 +50,6 @@ from ..utils.geo_validator import GulfRegionValidator
 from ..config import load_config, get_yaml_setting
 
 from .gemini_image_route_generator import GeminiImageRouteGenerator
-from ..clients.esri_imagery import ESRIImageryClient
 
 
 class BalancedTacticalPipeline:
@@ -73,7 +72,6 @@ class BalancedTacticalPipeline:
             location=config.vertex_location,
         )
 
-        self.esri = ESRIImageryClient()  # ESRI for satellite imagery (matches UI)
         self._progress_callback: Optional[Callable[[str, int, str], None]] = None
         self._last_image_bounds = None  # Track actual satellite image bounds
 
@@ -89,7 +87,7 @@ class BalancedTacticalPipeline:
             print(f"[BalancedPipeline] Using Vertex AI (project={config.google_cloud_project}, location={config.vertex_location})")
         else:
             print("[BalancedPipeline] Using AI Studio API key")
-        print("[BalancedPipeline] Using ESRI World Imagery (matches Leaflet UI)")
+        print("[BalancedPipeline] Using Google Maps Static API for satellite imagery")
 
     async def test_all_apis(self) -> dict[str, bool]:
         """Test connectivity to all APIs."""
@@ -159,10 +157,10 @@ class BalancedTacticalPipeline:
         return zoom
 
     async def _get_satellite_image_fast(self, bounds: dict, zoom: int = 14) -> tuple[Optional[str], dict]:
-        """Get satellite image from ESRI that covers the entire bounds area.
+        """Get satellite image from Google Maps that covers the entire bounds area.
 
-        Uses ESRI World Imagery tiles - same tiles Leaflet displays.
-        This ensures pixel-perfect visual match with the UI.
+        Uses Google Maps Static API for consistent, high-quality imagery
+        with excellent global coverage (especially at high zoom levels).
 
         Returns:
             Tuple of (base64_image, actual_bounds) where actual_bounds is the
@@ -187,12 +185,12 @@ class BalancedTacticalPipeline:
         print(f"[BalancedPipeline] Requested bounds: N={padded_bounds['north']:.6f}, S={padded_bounds['south']:.6f}, E={padded_bounds['east']:.6f}, W={padded_bounds['west']:.6f}")
 
         try:
-            # ESRI client now returns (image_bytes, actual_bounds)
-            # Use 1024x1024 for better image quality
-            image_bytes, actual_bounds = await self.esri.get_satellite_image(
+            # Google Maps Static API returns (image_bytes, actual_bounds)
+            # Use 1280x1280 for better image quality
+            image_bytes, actual_bounds = await self.gmaps.get_satellite_image_by_bounds(
                 bounds=padded_bounds,
-                width=1024,
-                height=1024
+                width=1280,
+                height=1280
             )
             if image_bytes:
                 # Store actual bounds for overlay positioning
@@ -200,7 +198,7 @@ class BalancedTacticalPipeline:
                 print(f"[BalancedPipeline] Actual image bounds: N={actual_bounds['north']:.6f}, S={actual_bounds['south']:.6f}, E={actual_bounds['east']:.6f}, W={actual_bounds['west']:.6f}")
                 return base64.b64encode(image_bytes).decode("utf-8"), actual_bounds
         except Exception as e:
-            print(f"[BalancedPipeline] ESRI satellite image failed: {e}")
+            print(f"[BalancedPipeline] Google Maps satellite image failed: {e}")
             import traceback
             traceback.print_exc()
         return None, {}
